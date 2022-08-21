@@ -1,0 +1,3 @@
+[submodule "wasmdbg"]
+	path = wasmdbg
+	url = https://github.com/HerrCai0907/wasmdbg.git
