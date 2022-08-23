@@ -185,18 +185,25 @@ export class DebugSession extends LoggingDebugSession {
         stackFrames: reply.stacksList.map((stack, index, arr) => {
           let sourcePosition: SourcePosition | undefined = undefined;
           let instrIndex = stack.instrIndex;
-          while (instrIndex >= 0) {
-            let binaryOffset = instrTobinaryMapping.get(stack.funcIndex)?.get(instrIndex);
+          for (; instrIndex >= 0; instrIndex--) {
+            if (stack.funcIndex >= instrTobinaryMapping.length) {
+              break;
+            }
+            const functionInstr = instrTobinaryMapping[stack.funcIndex];
+            if (instrIndex >= functionInstr.length) {
+              instrIndex = functionInstr.length;
+              continue;
+            }
+            let binaryOffset = functionInstr[instrIndex];
             if (binaryOffset) {
               sourcePosition = binaryToSourceMapping.get(binaryOffset);
               if (sourcePosition) {
                 break;
               }
             }
-            instrIndex--;
           }
           if (sourcePosition) {
-            if (index == arr.length - 1 && instrIndex != stack.instrIndex) {
+            if (index == 0 && instrIndex != stack.instrIndex) {
               vscode.window.showInformationMessage(
                 `stack trace may be incorrect, miss ${stack.instrIndex - instrIndex} instruction`
               );
