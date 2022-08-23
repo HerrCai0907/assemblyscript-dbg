@@ -1,0 +1,1 @@
+cargo install wasmdbg-grpc  --branch grpc --git https://github.com/HerrCai0907/wasmdbg.git 
