@@ -27,16 +27,15 @@
     "url": "https://github.com/HerrCai0907/assemblyscript-dbg/issues"
   },
   "scripts": {
-    "lint": "eslint src --ext ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "gen:grpc": "mkdir -p src/proto && grpc_tools_node_protoc --plugin=protoc-gen-ts=./node_modules/.bin/protoc-gen-ts --ts_out=grpc_js:src/proto --js_out=import_style=commonjs,binary:src/proto --grpc_out=grpc_js:src/proto --proto_path=wasmdbg/wasmdbg-grpc/proto wasmdbg/wasmdbg-grpc/proto/*",
-    "esbuild": "esbuild ./src/extension.ts --bundle --tsconfig=./tsconfig.json --external:vscode --format=cjs --platform=node --outfile=dist/extension.js",
-    "watch": "npm run -S esbuild -- --sourcemap --sources-content=false --watch",
-    "build": "npm run -S esbuild -- --sourcemap --sources-content=false",
     "package": "vsce package",
     "publish": "vsce publish",
     "publish-pre-release": "vsce publish --pre-release",
-    "vscode:prepublish": "rimraf dist && npm run -S esbuild -- --minify",
+    "vscode:prepublish": "rimraf dist && node scripts/build.mjs --minify",
+    "lint": "eslint src --ext ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "gen:grpc": "mkdir -p src/proto && grpc_tools_node_protoc --plugin=protoc-gen-ts=./node_modules/.bin/protoc-gen-ts --ts_out=grpc_js:src/proto --js_out=import_style=commonjs,binary:src/proto --grpc_out=grpc_js:src/proto --proto_path=wasmdbg/wasmdbg-grpc/proto wasmdbg/wasmdbg-grpc/proto/*",
+    "watch": "node scripts/build.mjs --sourcemap --sources-content=false --watch",
+    "build": "node scripts/build.mjs --sourcemap --sources-content=false",
     "test": "npm run typecheck"
   },
   "devDependencies": {
