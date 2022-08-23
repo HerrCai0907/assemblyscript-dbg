@@ -1,0 +1,11 @@
+{
+  "targets": {
+    "debug": {
+      "outFile": "build/debug.wasm",
+      "textFile": "build/debug.wat",
+      "sourceMap": true,
+      "debug": true
+    }
+  },
+  "options": {}
+}
