@@ -31,15 +31,15 @@ type CodeOffset = number;
 export class SourceMapAnalysis {
   rawBuffer: Promise<Buffer>;
   ast: Promise<WasmAst>;
-  binayToSourceMapping: Promise<Map<CodeOffset, SourcePosition> | null>;
-  instrToBinayMapping: Promise<Map<FuncIndex, Map<InstruIndex, CodeOffset>>>;
+  binaryToSourceMapping: Promise<Map<CodeOffset, SourcePosition> | null>;
+  instrToBinaryMapping: Promise<Map<FuncIndex, Map<InstruIndex, CodeOffset>>>;
 
   constructor(wasmFilePath: string, workSpacePath: string) {
     this.rawBuffer = readFile(wasmFilePath);
     this.ast = this.rawBuffer.then((buf) => {
       return parser(buf, { ignoreDataSection: true }) as WasmAst;
     });
-    this.binayToSourceMapping = Promise.all([this.rawBuffer, this.ast]).then(async ([buf, ast]) => {
+    this.binaryToSourceMapping = Promise.all([this.rawBuffer, this.ast]).then(async ([buf, ast]) => {
       let sourceMapUrl: string | null = null;
       const sections = ast.body[0].metadata.sections;
       for (let i = 0, k = sections.length; i < k; i++) {
@@ -72,21 +72,21 @@ export class SourceMapAnalysis {
         return binaryToSourceMapping;
       });
     });
-    this.instrToBinayMapping = this.ast.then((ast) => {
-      const instrToBinayMapping = new Map<FuncIndex, Map<InstruIndex, CodeOffset>>();
+    this.instrToBinaryMapping = this.ast.then((ast) => {
+      const instrToBinaryMapping = new Map<FuncIndex, Map<InstruIndex, CodeOffset>>();
       ast.body[0].fields
         .filter((field) => field.type === "Func")
         .forEach((func, funcIndex) => {
           func.body?.forEach((instr, instruIndex) => {
-            let instrMapping = instrToBinayMapping.get(funcIndex);
+            let instrMapping = instrToBinaryMapping.get(funcIndex);
             if (instrMapping == undefined) {
               instrMapping = new Map();
-              instrToBinayMapping.set(funcIndex, instrMapping);
+              instrToBinaryMapping.set(funcIndex, instrMapping);
             }
             instrMapping.set(instruIndex, instr.loc.start.column);
           });
         });
-      return instrToBinayMapping;
+      return instrToBinaryMapping;
     });
   }
 }

@@ -178,17 +178,17 @@ export class DebugSession extends LoggingDebugSession {
       return;
     }
     assert(this._sourceMapAnalysis);
-    const binayToSourceMapping = await this._sourceMapAnalysis.binayToSourceMapping;
-    if (binayToSourceMapping) {
-      let instrToBinayMapping = await this._sourceMapAnalysis.instrToBinayMapping;
+    const binaryToSourceMapping = await this._sourceMapAnalysis.binaryToSourceMapping;
+    if (binaryToSourceMapping) {
+      let instrTobinaryMapping = await this._sourceMapAnalysis.instrToBinaryMapping;
       response.body = {
         stackFrames: reply.stacksList.map((stack, index, arr) => {
           let sourcePosition: SourcePosition | undefined = undefined;
           let instrIndex = stack.instrIndex;
           while (instrIndex >= 0) {
-            let binaryOffset = instrToBinayMapping.get(stack.funcIndex)?.get(instrIndex);
+            let binaryOffset = instrTobinaryMapping.get(stack.funcIndex)?.get(instrIndex);
             if (binaryOffset) {
-              sourcePosition = binayToSourceMapping.get(binaryOffset);
+              sourcePosition = binaryToSourceMapping.get(binaryOffset);
               if (sourcePosition) {
                 break;
               }
