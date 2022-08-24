@@ -1,33 +1,66 @@
+import assert = require("assert");
 import * as wasmparser from "wasmparser";
 
 export interface WasmAst {
   sourceMapUrl: string | null;
   instructionMap: number[][];
+  functionName: Array<string | undefined>;
+}
+
+function bytes2str(bytes: Uint8Array) {
+  return Buffer.from(bytes).toString("utf8");
 }
 
 export function wasmParser(buf: Uint8Array): WasmAst {
-  let result: WasmAst = { instructionMap: [], sourceMapUrl: null };
+  let result: WasmAst = { instructionMap: [], sourceMapUrl: null, functionName: [] };
   let currentFunction: number[] = [];
   let parser = new wasmparser.BinaryReader();
   parser.setData(buf.buffer, 0, buf.length);
   while (parser.state >= 0) {
     if (!parser.read()) return result;
     switch (parser.state) {
-      case wasmparser.BinaryReaderState.BEGIN_FUNCTION_BODY:
+      case wasmparser.BinaryReaderState.IMPORT_SECTION_ENTRY: {
+        const importEntry = parser.result as wasmparser.IImportEntry;
+        const kind = importEntry.kind;
+        switch (kind) {
+          case wasmparser.ExternalKind.Function: {
+            result.instructionMap.push([]);
+            break;
+          }
+        }
+        break;
+      }
+      case wasmparser.BinaryReaderState.BEGIN_FUNCTION_BODY: {
         currentFunction = [];
         break;
-      case wasmparser.BinaryReaderState.END_FUNCTION_BODY:
+      }
+      case wasmparser.BinaryReaderState.END_FUNCTION_BODY: {
         result.instructionMap.push(currentFunction);
         break;
+      }
       case wasmparser.BinaryReaderState.CODE_OPERATOR: {
         let pos = parser.position;
         currentFunction.push(pos);
         break;
       }
-      case wasmparser.BinaryReaderState.SOURCE_MAPPING_URL:
-        let sectionInfo = parser.result as wasmparser.ISourceMappingURL;
-        result.sourceMapUrl = Buffer.from(sectionInfo.url).toString("utf8");
+      case wasmparser.BinaryReaderState.NAME_SECTION_ENTRY: {
+        let nameSection = parser.result as wasmparser.INameEntry;
+        switch (nameSection.type) {
+          case wasmparser.NameType.Function: {
+            result.functionName ??= [];
+            for (const funcName of (nameSection as wasmparser.IFunctionNameEntry).names) {
+              result.functionName[funcName.index] = bytes2str(funcName.name);
+            }
+            break;
+          }
+        }
         break;
+      }
+      case wasmparser.BinaryReaderState.SOURCE_MAPPING_URL: {
+        let sectionInfo = parser.result as wasmparser.ISourceMappingURL;
+        result.sourceMapUrl = bytes2str(sectionInfo.url);
+        break;
+      }
     }
   }
   return result;

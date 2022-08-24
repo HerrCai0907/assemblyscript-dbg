@@ -109,7 +109,7 @@ export class DebugSession extends LoggingDebugSession {
       return;
     }
     // load module
-    let loadReply = await new Promise<proto.LoadReply.AsObject>((resolve, reject) => {
+    let loadReply = await new Promise<proto.LoadReply.AsObject>((resolve) => {
       this._client.loadModule(new proto.LoadRequest().setFileName(args.program), (err, reply) => {
         if (err) {
           this.errorHandler(`connect with debug server failed: ${err}`);
@@ -168,7 +168,7 @@ export class DebugSession extends LoggingDebugSession {
     let reply = await new Promise<proto.GetCallStackReply.AsObject>((resolve) => {
       this._client.getCallStack(new proto.GetCallStackRequest(), (err, reply) => {
         if (err) {
-          this.errorHandler(`get stack failed due to "${err}"`);
+          this.errorHandler(`connect with debug server failed: ${err}`);
         }
         resolve(reply.toObject());
       });
@@ -179,6 +179,7 @@ export class DebugSession extends LoggingDebugSession {
     }
     assert(this._sourceMapAnalysis);
     const binaryToSourceMapping = await this._sourceMapAnalysis.binaryToSourceMapping;
+    const ast = await this._sourceMapAnalysis.ast;
     if (binaryToSourceMapping) {
       let instrTobinaryMapping = await this._sourceMapAnalysis.instrToBinaryMapping;
       response.body = {
@@ -210,12 +211,12 @@ export class DebugSession extends LoggingDebugSession {
             }
             return new StackFrame(
               index,
-              stack.funcIndex.toString(),
+              ast.functionName[stack.funcIndex] ?? stack.funcIndex.toString(),
               this.createSource(sourcePosition.source),
               sourcePosition.line
             );
           } else {
-            return new StackFrame(index, stack.funcIndex.toString());
+            return new StackFrame(index, ast.functionName[stack.funcIndex] ?? stack.funcIndex.toString());
           }
         }),
       };
@@ -237,13 +238,12 @@ export class DebugSession extends LoggingDebugSession {
     args: DebugProtocol.VariablesArguments,
     request?: DebugProtocol.Request
   ): Promise<void> {
-    let reply = await new Promise<proto.GetLocalReply.AsObject>((resolve, reject) => {
+    let reply = await new Promise<proto.GetLocalReply.AsObject>((resolve) => {
       this._client.getLocal(new proto.GetLocalRequest().setCallStack(-1), (err, reply) => {
         if (err) {
-          reject(err);
-        } else {
-          resolve(reply.toObject());
+          this.errorHandler(`connect with debug server failed: ${err}`);
         }
+        resolve(reply.toObject());
       });
     });
     if (reply.status == proto.Status.NOK) {
