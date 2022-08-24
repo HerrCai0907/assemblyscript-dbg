@@ -243,7 +243,7 @@ export class DebugSession extends LoggingDebugSession {
     args: DebugProtocol.VariablesArguments,
     request?: DebugProtocol.Request
   ): Promise<void> {
-    let valueList: { name?: string; value?: proto.Value.AsObject }[] = [];
+    let valueList: { name?: string; value?: proto.Value }[] = [];
     let ast = await this._sourceMapAnalysis?.ast;
     assert(ast);
     switch (args.variablesReference) {
@@ -252,42 +252,43 @@ export class DebugSession extends LoggingDebugSession {
         break;
       }
       case FixedScopeId.ValueStack: {
-        let reply = await new Promise<proto.GetValueStackReply.AsObject>((resolve) => {
+        let reply = await new Promise<proto.GetValueStackReply>((resolve) => {
           this._client.getValueStack(new proto.NullRequest(), (err, reply) => {
             if (err) {
               this.errorHandler(`connect with debug server failed: ${err}`);
             }
-            resolve(reply.toObject());
+            resolve(reply);
           });
         });
-        if (reply.status == proto.Status.NOK) {
-          this.errorHandler(`get value stack failed due to "${reply.errorReason}"`);
+        if (reply.getStatus() == proto.Status.NOK) {
+          this.errorHandler(`get value stack failed due to "${reply.getErrorReason()}"`);
           return;
         }
-        valueList = reply.valuesList.map((values) => {
+        valueList = reply.getValuesList().map((values) => {
           return { value: values };
         });
         break;
       }
       default: {
         let stackFrame = -1 - ScopeId.getStack(args.variablesReference);
-        let reply = await new Promise<proto.GetLocalReply.AsObject>((resolve) => {
+        let reply = await new Promise<proto.GetLocalReply>((resolve) => {
           this._client.getLocal(new proto.GetLocalRequest().setCallStack(stackFrame), (err, reply) => {
             if (err) {
               this.errorHandler(`connect with debug server failed: ${err}`);
             }
-            resolve(reply.toObject());
+            resolve(reply);
           });
         });
-        if (reply.status == proto.Status.NOK) {
-          this.errorHandler(`get local failed due to "${reply.errorReason}"`);
+        if (reply.getStatus() == proto.Status.NOK) {
+          this.errorHandler(`get local failed due to "${reply.getErrorReason()}"`);
           return;
         }
         let localName: Array<string | undefined> | undefined = undefined;
-        if (reply.funcIndex != undefined) {
-          localName = ast.localName[reply.funcIndex];
+        let funcIndex = reply.getFuncIndex();
+        if (funcIndex != undefined) {
+          localName = ast.localName[funcIndex];
         }
-        valueList = reply.localsList.map((locals, index) => {
+        valueList = reply.getLocalsList().map((locals, index) => {
           let name = localName ? localName[index] : undefined;
           return { name, value: locals };
         });
@@ -299,7 +300,7 @@ export class DebugSession extends LoggingDebugSession {
         let value = valueProp.value;
         let variable: DebugProtocol.Variable = {
           name: valueProp.name ?? `${index}`,
-          value: `${value?.i32 ?? value?.i64 ?? value?.f32 ?? value?.f64 ?? "unknown"}`,
+          value: DebugSession.value2str(value),
           variablesReference: 0,
         };
         return variable;
@@ -327,5 +328,26 @@ export class DebugSession extends LoggingDebugSession {
   private errorHandler(reason: string) {
     vscode.window.showErrorMessage(reason);
     this.sendEvent(new TerminatedEvent());
+  }
+
+  private static value2str(value: proto.Value | undefined): string {
+    if (value == undefined) {
+      return "unknown";
+    }
+    switch (value.getValueCase()) {
+      case proto.Value.ValueCase.I32: {
+        return value.getI32().toString();
+      }
+      case proto.Value.ValueCase.I64: {
+        return value.getI64().toString();
+      }
+      case proto.Value.ValueCase.F32: {
+        return value.getF32().toString();
+      }
+      case proto.Value.ValueCase.F64: {
+        return value.getF64().toString();
+      }
+    }
+    return "unknown";
   }
 }
