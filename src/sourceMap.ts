@@ -23,7 +23,7 @@ export class SourceMapAnalysis {
     this.ast = this.rawBuffer.then((buf) => {
       return wasmParser(buf);
     });
-    this.binaryToSourceMapping = Promise.all([this.rawBuffer, this.ast]).then(async ([buf, ast]) => {
+    this.binaryToSourceMapping = this.ast.then(async (ast) => {
       if (ast.sourceMapUrl == null) {
         return null;
       }
@@ -33,9 +33,7 @@ export class SourceMapAnalysis {
         let binaryToSourceMapping = new Map();
         consumer.eachMapping((m) => {
           let source = sourceMap.sourceRoot ? relative(sourceMap.sourceRoot, m.source) : m.source;
-          if (source.startsWith("~lib/")) {
-            source.replace(/^~lib/, "node_modules/assemblyscript/std/assembly");
-          }
+          source = source.replace(/^~lib/, "node_modules/assemblyscript/std/assembly");
           source = join(workSpacePath, source);
           binaryToSourceMapping.set(m.generatedColumn, { source, line: m.originalLine });
         });
