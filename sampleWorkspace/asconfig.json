@@ -7,5 +7,7 @@
       "debug": true
     }
   },
-  "options": {}
+  "options": {
+    "disable": ["sign-extension", "nontrapping-f2i", "bulk-memory"]
+  }
 }

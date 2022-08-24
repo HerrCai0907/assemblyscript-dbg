@@ -7,3 +7,8 @@ export function fibonacci(n: i32): i32 {
     return fibonacci(n - 1) + fibonacci(n + 1);
   }
 }
+
+export function arrayOperator(): void {
+  let a = new Array<i32>();
+  a.push(100);
+}
