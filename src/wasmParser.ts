@@ -5,6 +5,7 @@ export interface WasmAst {
   sourceMapUrl: string | null;
   instructionMap: number[][];
   functionName: Array<string | undefined>;
+  localName: Array<Array<string | undefined> | undefined>;
 }
 
 function bytes2str(bytes: Uint8Array) {
@@ -12,7 +13,7 @@ function bytes2str(bytes: Uint8Array) {
 }
 
 export function wasmParser(buf: Uint8Array): WasmAst {
-  let result: WasmAst = { instructionMap: [], sourceMapUrl: null, functionName: [] };
+  let result: WasmAst = { instructionMap: [], sourceMapUrl: null, functionName: [], localName: [] };
   let currentFunction: number[] = [];
   let parser = new wasmparser.BinaryReader();
   parser.setData(buf.buffer, 0, buf.length);
@@ -52,6 +53,16 @@ export function wasmParser(buf: Uint8Array): WasmAst {
               result.functionName[funcName.index] = bytes2str(funcName.name);
             }
             break;
+          }
+          case wasmparser.NameType.Local: {
+            let localNames = nameSection as wasmparser.ILocalNameEntry;
+            localNames.funcs.forEach((func) => {
+              let funcLocalNames: string[] = [];
+              func.locals.forEach((local) => {
+                funcLocalNames[local.index] = bytes2str(local.name);
+              });
+              result.localName[func.index] = funcLocalNames;
+            });
           }
         }
         break;

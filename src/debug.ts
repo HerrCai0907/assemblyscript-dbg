@@ -16,6 +16,7 @@ import * as proto from "./proto/interface_pb";
 import { basename } from "path";
 import { SourceMapAnalysis, SourcePosition } from "./sourceMap";
 import assert = require("assert");
+import { FixedScopeId, ScopeId } from "./scopeId";
 
 /**
  * This interface describes the mock-debug specific launch attributes
@@ -229,7 +230,11 @@ export class DebugSession extends LoggingDebugSession {
   }
   protected scopesRequest(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments): void {
     response.body = {
-      scopes: [new Scope("Locals", 1, false)],
+      scopes: [
+        new Scope(`Locals`, ScopeId.getStackId(args.frameId), false),
+        new Scope("ValueStack", ScopeId.getValueStackId(), false),
+        new Scope("Globals", ScopeId.getGlobalId(), false),
+      ],
     };
     this.sendResponse(response);
   }
@@ -238,23 +243,62 @@ export class DebugSession extends LoggingDebugSession {
     args: DebugProtocol.VariablesArguments,
     request?: DebugProtocol.Request
   ): Promise<void> {
-    let reply = await new Promise<proto.GetLocalReply.AsObject>((resolve) => {
-      this._client.getLocal(new proto.GetLocalRequest().setCallStack(-1), (err, reply) => {
-        if (err) {
-          this.errorHandler(`connect with debug server failed: ${err}`);
+    let valueList: { name?: string; value?: proto.Value.AsObject }[] = [];
+    let ast = await this._sourceMapAnalysis?.ast;
+    assert(ast);
+    switch (args.variablesReference) {
+      case FixedScopeId.Global: {
+        return;
+        break;
+      }
+      case FixedScopeId.ValueStack: {
+        let reply = await new Promise<proto.GetValueStackReply.AsObject>((resolve) => {
+          this._client.getValueStack(new proto.NullRequest(), (err, reply) => {
+            if (err) {
+              this.errorHandler(`connect with debug server failed: ${err}`);
+            }
+            resolve(reply.toObject());
+          });
+        });
+        if (reply.status == proto.Status.NOK) {
+          this.errorHandler(`get value stack failed due to "${reply.errorReason}"`);
+          return;
         }
-        resolve(reply.toObject());
-      });
-    });
-    if (reply.status == proto.Status.NOK) {
-      this.errorHandler(`get local failed due to "${reply.errorReason}"`);
-      return;
+        valueList = reply.valuesList.map((values) => {
+          return { value: values };
+        });
+        break;
+      }
+      default: {
+        let stackFrame = -1 - ScopeId.getStack(args.variablesReference);
+        let reply = await new Promise<proto.GetLocalReply.AsObject>((resolve) => {
+          this._client.getLocal(new proto.GetLocalRequest().setCallStack(stackFrame), (err, reply) => {
+            if (err) {
+              this.errorHandler(`connect with debug server failed: ${err}`);
+            }
+            resolve(reply.toObject());
+          });
+        });
+        if (reply.status == proto.Status.NOK) {
+          this.errorHandler(`get local failed due to "${reply.errorReason}"`);
+          return;
+        }
+        let localName: Array<string | undefined> | undefined = undefined;
+        if (reply.funcIndex != undefined) {
+          localName = ast.localName[reply.funcIndex];
+        }
+        valueList = reply.localsList.map((locals, index) => {
+          let name = localName ? localName[index] : undefined;
+          return { name, value: locals };
+        });
+        break;
+      }
     }
     response.body = {
-      variables: reply.localsList.map((local, index) => {
-        let value = local.value;
+      variables: valueList.map((valueProp, index) => {
+        let value = valueProp.value;
         let variable: DebugProtocol.Variable = {
-          name: local.name ?? `var-${index}`,
+          name: valueProp.name ?? `${index}`,
           value: `${value?.i32 ?? value?.i64 ?? value?.f32 ?? value?.f64 ?? "unknown"}`,
           variablesReference: 0,
         };
