@@ -132,7 +132,13 @@ export class DebugSession extends LoggingDebugSession {
     this.sendEvent(new StoppedEvent("step", DebugSession.threadID));
     this.sendResponse(response);
   }
-  protected stepOutRequest(response: DebugProtocol.StepOutResponse, args: DebugProtocol.StepOutArguments): void {
+  protected async stepOutRequest(response: DebugProtocol.StepOutResponse, args: DebugProtocol.StepOutArguments) {
+    await this.runCode(proto.RunCodeType.STEP_OUT);
+    this.sendEvent(new StoppedEvent("step", DebugSession.threadID));
+    this.sendResponse(response);
+  }
+  protected async nextRequest(response: DebugProtocol.NextResponse, args: DebugProtocol.NextArguments) {
+    await this.runCode(proto.RunCodeType.STEP_OVER);
     this.sendEvent(new StoppedEvent("step", DebugSession.threadID));
     this.sendResponse(response);
   }
