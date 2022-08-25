@@ -8,6 +8,7 @@ import {
   StackFrame,
   Source,
   TerminatedEvent,
+  OutputEvent,
 } from "@vscode/debugadapter";
 import { DebugProtocol } from "@vscode/debugprotocol";
 import { WasmDebuggerClient } from "./proto/interface_grpc_pb";
@@ -17,6 +18,9 @@ import { basename } from "path";
 import { SourceMapAnalysis, SourcePosition } from "./sourceMap";
 import assert = require("assert");
 import { FixedScopeId, ScopeId } from "./scopeId";
+import { WasmDAPServer } from "./dapServer";
+import { value2str } from "./utils";
+import { abort, trace } from "./importFunction";
 
 /**
  * This interface describes the mock-debug specific launch attributes
@@ -35,17 +39,15 @@ export class DebugSession extends LoggingDebugSession {
   private static threadID = 1;
 
   private _configurationDone = false;
-  private _client: WasmDebuggerClient;
+  private _client = new WasmDebuggerClient("[::1]:50051", grpc.credentials.createInsecure());
+  private _server = new WasmDAPServer("[::1]:50052", this, this.errorHandler);
   private _sourceMapAnalysis: SourceMapAnalysis | null = null;
 
   constructor() {
     super("assemblyscript-debugger.txt");
-
     // this debugger uses zero-based lines and columns
     this.setDebuggerLinesStartAt1(false);
     this.setDebuggerColumnsStartAt1(false);
-
-    this._client = new WasmDebuggerClient("[::1]:50051", grpc.credentials.createInsecure());
   }
 
   /**
@@ -58,12 +60,9 @@ export class DebugSession extends LoggingDebugSession {
   ): void {
     // build and return the capabilities of this debug adapter:
     response.body = response.body || {};
-
     // the adapter implements the configurationDone request.
     response.body.supportsConfigurationDoneRequest = true;
-
     this.sendResponse(response);
-
     // since this debug adapter can accept configuration requests like 'setBreakpoint' at any time,
     // we request them early by sending an 'initializeRequest' to the frontend.
     // The frontend will end the configuration sequence by calling 'configurationDone' request.
@@ -90,6 +89,10 @@ export class DebugSession extends LoggingDebugSession {
     console.log(`disconnectRequest suspend: ${args.suspendDebuggee}, terminate: ${args.terminateDebuggee}`);
   }
 
+  dispose() {
+    this._server.stop();
+  }
+
   //  ██████  ██████  ███████ ██████   █████  ████████  ██████  ██████
   // ██    ██ ██   ██ ██      ██   ██ ██   ██    ██    ██    ██ ██   ██
   // ██    ██ ██████  █████   ██████  ███████    ██    ██    ██ ██████
@@ -98,7 +101,8 @@ export class DebugSession extends LoggingDebugSession {
 
   protected async launchRequest(response: DebugProtocol.LaunchResponse, args: ILaunchRequestArguments) {
     this._sourceMapAnalysis = new SourceMapAnalysis(args.program, args.cwd);
-
+    this._server.registeryImportFunction("env", "trace", trace);
+    this._server.registeryImportFunction("env", "abort", abort);
     // wait 1 second until configuration has finished (and configurationDoneRequest has been called)
     let available = await new Promise<boolean>((resolve) => {
       setTimeout(() => {
@@ -109,6 +113,9 @@ export class DebugSession extends LoggingDebugSession {
       this.errorHandler("configuration failed");
       return;
     }
+    // start server
+    this._server.ast = await this._sourceMapAnalysis.ast;
+    this._server.start();
     // load module
     let loadReply = await new Promise<proto.LoadReply.AsObject>((resolve) => {
       this._client.loadModule(new proto.LoadRequest().setFileName(args.program), (err, reply) => {
@@ -312,7 +319,7 @@ export class DebugSession extends LoggingDebugSession {
         let value = valueProp.value;
         let variable: DebugProtocol.Variable = {
           name: valueProp.name ?? `${index}`,
-          value: DebugSession.value2str(value),
+          value: value2str(value),
           variablesReference: 0,
         };
         return variable;
@@ -339,27 +346,8 @@ export class DebugSession extends LoggingDebugSession {
 
   private errorHandler(reason: string) {
     vscode.window.showErrorMessage(reason);
+    let e = new OutputEvent(reason, "stderr");
+    this.sendEvent(e);
     this.sendEvent(new TerminatedEvent());
-  }
-
-  private static value2str(value: proto.Value | undefined): string {
-    if (value == undefined) {
-      return "unknown";
-    }
-    switch (value.getValueCase()) {
-      case proto.Value.ValueCase.I32: {
-        return value.getI32().toString();
-      }
-      case proto.Value.ValueCase.I64: {
-        return value.getI64().toString();
-      }
-      case proto.Value.ValueCase.F32: {
-        return value.getF32().toString();
-      }
-      case proto.Value.ValueCase.F64: {
-        return value.getF64().toString();
-      }
-    }
-    return "unknown";
   }
 }

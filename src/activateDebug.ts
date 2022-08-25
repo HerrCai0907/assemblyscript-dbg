@@ -41,7 +41,13 @@ export function activateDebug(context: vscode.ExtensionContext, factory?: vscode
 }
 
 class InlineDebugAdapterFactory implements vscode.DebugAdapterDescriptorFactory {
+  private session: DebugSession | null = null;
+
   createDebugAdapterDescriptor(_session: vscode.DebugSession): ProviderResult<vscode.DebugAdapterDescriptor> {
-    return new vscode.DebugAdapterInlineImplementation(new DebugSession());
+    this.session = new DebugSession();
+    return new vscode.DebugAdapterInlineImplementation(this.session);
+  }
+  dispose() {
+    this.session?.dispose();
   }
 }

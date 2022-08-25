@@ -6,6 +6,7 @@ export interface WasmAst {
   instructionMap: number[][];
   functionName: Array<string | undefined>;
   localName: Array<Array<string | undefined> | undefined>;
+  importFunctionName: Map<number, [string, string]>;
 }
 
 function bytes2str(bytes: Uint8Array) {
@@ -13,7 +14,13 @@ function bytes2str(bytes: Uint8Array) {
 }
 
 export function wasmParser(buf: Uint8Array): WasmAst {
-  let result: WasmAst = { instructionMap: [], sourceMapUrl: null, functionName: [], localName: [] };
+  let result: WasmAst = {
+    instructionMap: [],
+    sourceMapUrl: null,
+    functionName: [],
+    localName: [],
+    importFunctionName: new Map(),
+  };
   let currentFunction: number[] = [];
   let parser = new wasmparser.BinaryReader();
   parser.setData(buf.buffer, 0, buf.length);
@@ -25,6 +32,10 @@ export function wasmParser(buf: Uint8Array): WasmAst {
         const kind = importEntry.kind;
         switch (kind) {
           case wasmparser.ExternalKind.Function: {
+            result.importFunctionName.set(result.instructionMap.length, [
+              bytes2str(importEntry.module),
+              bytes2str(importEntry.field),
+            ]);
             result.instructionMap.push([]);
             break;
           }
