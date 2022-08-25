@@ -193,6 +193,11 @@ export class DebugSession extends LoggingDebugSession {
         stackFrames: reply.stacksList.map((stack, index, arr) => {
           let sourcePosition: SourcePosition | undefined = undefined;
           let instrIndex = stack.instrIndex;
+          if (index != 0) {
+            // if not in top call stack, instr is return addr, so need to reduce 1 for call instr
+            instrIndex--;
+          }
+          let orginInstrIndex = instrIndex;
           for (; instrIndex >= 0; instrIndex--) {
             if (stack.funcIndex >= instrTobinaryMapping.length) {
               break;
@@ -211,9 +216,9 @@ export class DebugSession extends LoggingDebugSession {
             }
           }
           if (sourcePosition) {
-            if (index == 0 && instrIndex != stack.instrIndex) {
+            if (index == 0 && instrIndex != orginInstrIndex) {
               vscode.window.showInformationMessage(
-                `stack trace may be incorrect, miss ${stack.instrIndex - instrIndex} instruction`
+                `stack trace may be incorrect, miss ${orginInstrIndex - instrIndex} instruction`
               );
             }
             return new StackFrame(
@@ -254,6 +259,7 @@ export class DebugSession extends LoggingDebugSession {
     assert(ast);
     switch (args.variablesReference) {
       case FixedScopeId.Global: {
+        // TODO
         return;
         break;
       }

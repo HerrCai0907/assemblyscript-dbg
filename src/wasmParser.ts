@@ -32,7 +32,8 @@ export function wasmParser(buf: Uint8Array): WasmAst {
         break;
       }
       case wasmparser.BinaryReaderState.BEGIN_FUNCTION_BODY: {
-        currentFunction = [];
+        // function body means first opcode
+        currentFunction = [parser.position];
         break;
       }
       case wasmparser.BinaryReaderState.END_FUNCTION_BODY: {
@@ -40,8 +41,7 @@ export function wasmParser(buf: Uint8Array): WasmAst {
         break;
       }
       case wasmparser.BinaryReaderState.CODE_OPERATOR: {
-        let pos = parser.position;
-        currentFunction.push(pos);
+        currentFunction.push(parser.position);
         break;
       }
       case wasmparser.BinaryReaderState.NAME_SECTION_ENTRY: {
