@@ -66,8 +66,8 @@
     i32.sub
     call $assembly/lib/fibonacci
     local.get $n
-    i32.const 1
-    i32.add
+    i32.const 2
+    i32.sub
     call $assembly/lib/fibonacci
     i32.add
     return
@@ -3923,7 +3923,7 @@
   local.set $a
   f64.const 2.5
   local.set $b
-  i32.const 10
+  i32.const 4
   call $assembly/lib/fibonacci
   local.set $c
   call $assembly/lib/arrayOperator
