@@ -37,13 +37,21 @@ interface ILaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
   /** List of user-defined API */
   apiFiles?: string[];
 }
+type ApiCollection = Record<
+  string,
+  | Record<
+      string,
+      ((extension: DebugSessionWrapper, args: number[], memory: Uint8Array, globals: number[]) => number | null) | undefined
+    >
+  | undefined
+>;
 
 export class DebugSession extends LoggingDebugSession {
   private static threadID = 1;
 
   private _configurationDone = false;
   private _client = new WasmDebuggerClient("[::1]:50051", grpc.credentials.createInsecure());
-  private _server = new WasmDAPServer("[::1]:50052", this.errorHandler);
+  private _server: WasmDAPServer;
   private _sourceMapAnalysis: SourceMapAnalysis | null = null;
 
   constructor() {
@@ -51,6 +59,7 @@ export class DebugSession extends LoggingDebugSession {
     // this debugger uses zero-based lines and columns
     this.setDebuggerLinesStartAt1(false);
     this.setDebuggerColumnsStartAt1(false);
+    this._server = new WasmDAPServer("[::1]:50052", this.errorHandler);
   }
 
   /**
@@ -62,7 +71,7 @@ export class DebugSession extends LoggingDebugSession {
     args: DebugProtocol.InitializeRequestArguments
   ): void {
     // build and return the capabilities of this debug adapter:
-    response.body = response.body || {};
+    response.body = response.body ?? {};
     // the adapter implements the configurationDone request.
     response.body.supportsConfigurationDoneRequest = true;
     this.sendResponse(response);
@@ -125,15 +134,19 @@ export class DebugSession extends LoggingDebugSession {
     });
     // register user defined API
     args.apiFiles?.forEach((file) => {
-      let apis = require(file);
+      const apis = require(file) as ApiCollection;
       for (const moduleName in apis) {
-        for (const fieldName in apis[moduleName]) {
+        const module = apis[moduleName];
+        assert(module);
+        for (const fieldName in module) {
+          const field = module[fieldName];
+          assert(field);
           this._server.registeryImportFunction(
             moduleName,
             fieldName,
             (args: number[], memory: Uint8Array, globals: number[]) => {
               try {
-                return apis[moduleName][fieldName](new DebugSessionWrapper(this), args, memory, globals);
+                return field(new DebugSessionWrapper(this), args, memory, globals);
               } catch (e) {
                 this.sendEvent(new OutputEvent(`user defined function crash due to ${e}`, "stderr"));
                 this.sendEvent(new StoppedEvent("exception"));
@@ -145,7 +158,7 @@ export class DebugSession extends LoggingDebugSession {
       }
     });
     // wait 1 second until configuration has finished (and configurationDoneRequest has been called)
-    let available = await new Promise<boolean>((resolve) => {
+    const available = await new Promise<boolean>((resolve) => {
       setTimeout(() => {
         resolve(this._configurationDone);
       }, 1000);
@@ -158,10 +171,10 @@ export class DebugSession extends LoggingDebugSession {
     this._server.ast = await this._sourceMapAnalysis.ast;
     this._server.start();
     // load module
-    let loadReply = await new Promise<proto.LoadReply.AsObject>((resolve) => {
+    const loadReply = await new Promise<proto.LoadReply.AsObject>((resolve) => {
       this._client.loadModule(new proto.LoadRequest().setFileName(args.program), (err, reply) => {
         if (err) {
-          this.errorHandler(`connect with debug server failed: ${err}`);
+          this.errorHandler(`connect with debug server failed: ${err.name} ${err.details}`);
         }
         resolve(reply.toObject());
       });
@@ -192,15 +205,15 @@ export class DebugSession extends LoggingDebugSession {
   }
 
   private async runCode(type: proto.RunCodeType) {
-    let reply = await new Promise<proto.RunCodeReply.AsObject>((resolve) => {
+    const reply = await new Promise<proto.RunCodeReply.AsObject>((resolve) => {
       this._client.runCode(new proto.RunCodeRequest().setRunCodeType(type), (err, reply) => {
         if (err) {
-          this.errorHandler(`connect with debug server failed: ${err}`);
+          this.errorHandler(`connect with debug server failed: ${err.name} ${err.details}`);
         }
         resolve(reply.toObject());
       });
     });
-    if (reply && reply.status == proto.Status.NOK) {
+    if (reply.status == proto.Status.NOK) {
       this.errorHandler(`excute failed due to: ${reply.errorReason}`);
       return false;
     }
@@ -220,10 +233,10 @@ export class DebugSession extends LoggingDebugSession {
     this.sendResponse(response);
   }
   protected async stackTraceRequest(response: DebugProtocol.StackTraceResponse, args: DebugProtocol.StackTraceArguments) {
-    let reply = await new Promise<proto.GetCallStackReply.AsObject>((resolve) => {
+    const reply = await new Promise<proto.GetCallStackReply.AsObject>((resolve) => {
       this._client.getCallStack(new proto.GetCallStackRequest(), (err, reply) => {
         if (err) {
-          this.errorHandler(`connect with debug server failed: ${err}`);
+          this.errorHandler(`connect with debug server failed: ${err.name} ${err.details}`);
         }
         resolve(reply.toObject());
       });
@@ -236,7 +249,7 @@ export class DebugSession extends LoggingDebugSession {
     const binaryToSourceMapping = await this._sourceMapAnalysis.binaryToSourceMapping;
     const ast = await this._sourceMapAnalysis.ast;
     if (binaryToSourceMapping) {
-      let instrTobinaryMapping = await this._sourceMapAnalysis.instrToBinaryMapping;
+      const instrTobinaryMapping = await this._sourceMapAnalysis.instrToBinaryMapping;
       response.body = {
         stackFrames: reply.stacksList.map((stack, index, arr) => {
           let sourcePosition: SourcePosition | undefined = undefined;
@@ -245,7 +258,7 @@ export class DebugSession extends LoggingDebugSession {
             // if not in top call stack, instr is return addr, so need to reduce 1 for call instr
             instrIndex--;
           }
-          let orginInstrIndex = instrIndex;
+          const orginInstrIndex = instrIndex;
           for (; instrIndex >= 0; instrIndex--) {
             if (stack.funcIndex >= instrTobinaryMapping.length) {
               break;
@@ -255,7 +268,7 @@ export class DebugSession extends LoggingDebugSession {
               instrIndex = functionInstr.length;
               continue;
             }
-            let binaryOffset = functionInstr[instrIndex];
+            const binaryOffset = functionInstr[instrIndex];
             if (binaryOffset) {
               sourcePosition = binaryToSourceMapping.get(binaryOffset);
               if (sourcePosition) {
@@ -265,7 +278,7 @@ export class DebugSession extends LoggingDebugSession {
           }
           if (sourcePosition) {
             if (index == 0 && instrIndex != orginInstrIndex) {
-              vscode.window.showInformationMessage(
+              void vscode.window.showInformationMessage(
                 `stack trace may be incorrect, miss ${orginInstrIndex - instrIndex} instruction`
               );
             }
@@ -303,7 +316,7 @@ export class DebugSession extends LoggingDebugSession {
     request?: DebugProtocol.Request
   ): Promise<void> {
     let valueList: { name?: string; value?: proto.Value }[] = [];
-    let ast = await this._sourceMapAnalysis?.ast;
+    const ast = await this._sourceMapAnalysis?.ast;
     assert(ast);
     switch (args.variablesReference) {
       case FixedScopeId.Global: {
@@ -312,10 +325,10 @@ export class DebugSession extends LoggingDebugSession {
         break;
       }
       case FixedScopeId.ValueStack: {
-        let reply = await new Promise<proto.GetValueStackReply>((resolve) => {
+        const reply = await new Promise<proto.GetValueStackReply>((resolve) => {
           this._client.getValueStack(new proto.NullRequest(), (err, reply) => {
             if (err) {
-              this.errorHandler(`connect with debug server failed: ${err}`);
+              this.errorHandler(`connect with debug server failed: ${err.name} ${err.details}`);
             }
             resolve(reply);
           });
@@ -330,11 +343,11 @@ export class DebugSession extends LoggingDebugSession {
         break;
       }
       default: {
-        let stackFrame = -1 - ScopeId.getStack(args.variablesReference);
-        let reply = await new Promise<proto.GetLocalReply>((resolve) => {
+        const stackFrame = -1 - ScopeId.getStack(args.variablesReference);
+        const reply = await new Promise<proto.GetLocalReply>((resolve) => {
           this._client.getLocal(new proto.GetLocalRequest().setCallStack(stackFrame), (err, reply) => {
             if (err) {
-              this.errorHandler(`connect with debug server failed: ${err}`);
+              this.errorHandler(`connect with debug server failed: ${err.name} ${err.details}`);
             }
             resolve(reply);
           });
@@ -343,13 +356,13 @@ export class DebugSession extends LoggingDebugSession {
           this.errorHandler(`get local failed due to "${reply.getErrorReason()}"`);
           return;
         }
-        let localName: Array<string | undefined> | undefined = undefined;
-        let funcIndex = reply.getFuncIndex();
+        let localName: (string | undefined)[] | undefined = undefined;
+        const funcIndex = reply.getFuncIndex();
         if (funcIndex != undefined) {
           localName = ast.localName[funcIndex];
         }
         valueList = reply.getLocalsList().map((locals, index) => {
-          let name = localName ? localName[index] : undefined;
+          const name = localName ? localName[index] : undefined;
           return { name, value: locals };
         });
         break;
@@ -357,8 +370,8 @@ export class DebugSession extends LoggingDebugSession {
     }
     response.body = {
       variables: valueList.map((valueProp, index) => {
-        let value = valueProp.value;
-        let variable: DebugProtocol.Variable = {
+        const value = valueProp.value;
+        const variable: DebugProtocol.Variable = {
           name: valueProp.name ?? `${index}`,
           value: value2str(value),
           variablesReference: 0,
@@ -385,10 +398,10 @@ export class DebugSession extends LoggingDebugSession {
     );
   }
 
-  private errorHandler(reason: string) {
-    vscode.window.showErrorMessage(reason);
-    let e = new OutputEvent(reason, "stderr");
+  private errorHandler = (reason: string) => {
+    void vscode.window.showErrorMessage(reason);
+    const e = new OutputEvent(reason, "stderr");
     this.sendEvent(e);
     this.sendEvent(new TerminatedEvent());
-  }
+  };
 }

@@ -17,6 +17,9 @@ module.exports = {
   ],
   rules: {
     "@typescript-eslint/no-unused-vars": 0,
+    "@typescript-eslint/no-extraneous-class": 0,
+    "@typescript-eslint/restrict-template-expressions": 0,
+    "@typescript-eslint/no-var-requires": 0,
   },
   ignorePatterns: ["**/*.d.ts"],
 };

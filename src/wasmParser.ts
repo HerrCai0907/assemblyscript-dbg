@@ -4,8 +4,8 @@ import * as wasmparser from "wasmparser";
 export interface WasmAst {
   sourceMapUrl: string | null;
   instructionMap: number[][];
-  functionName: Array<string | undefined>;
-  localName: Array<Array<string | undefined> | undefined>;
+  functionName: (string | undefined)[];
+  localName: ((string | undefined)[] | undefined)[];
   importFunctionName: Map<number, [string, string]>;
 }
 
@@ -14,7 +14,7 @@ function bytes2str(bytes: Uint8Array) {
 }
 
 export function wasmParser(buf: Uint8Array): WasmAst {
-  let result: WasmAst = {
+  const result: WasmAst = {
     instructionMap: [],
     sourceMapUrl: null,
     functionName: [],
@@ -22,7 +22,7 @@ export function wasmParser(buf: Uint8Array): WasmAst {
     importFunctionName: new Map(),
   };
   let currentFunction: number[] = [];
-  let parser = new wasmparser.BinaryReader();
+  const parser = new wasmparser.BinaryReader();
   parser.setData(buf.buffer, 0, buf.length);
   while (parser.state >= 0) {
     if (!parser.read()) return result;
@@ -56,7 +56,7 @@ export function wasmParser(buf: Uint8Array): WasmAst {
         break;
       }
       case wasmparser.BinaryReaderState.NAME_SECTION_ENTRY: {
-        let nameSection = parser.result as wasmparser.INameEntry;
+        const nameSection = parser.result as wasmparser.INameEntry;
         switch (nameSection.type) {
           case wasmparser.NameType.Function: {
             result.functionName ??= [];
@@ -66,9 +66,9 @@ export function wasmParser(buf: Uint8Array): WasmAst {
             break;
           }
           case wasmparser.NameType.Local: {
-            let localNames = nameSection as wasmparser.ILocalNameEntry;
+            const localNames = nameSection as wasmparser.ILocalNameEntry;
             localNames.funcs.forEach((func) => {
-              let funcLocalNames: string[] = [];
+              const funcLocalNames: string[] = [];
               func.locals.forEach((local) => {
                 funcLocalNames[local.index] = bytes2str(local.name);
               });
@@ -79,7 +79,7 @@ export function wasmParser(buf: Uint8Array): WasmAst {
         break;
       }
       case wasmparser.BinaryReaderState.SOURCE_MAPPING_URL: {
-        let sectionInfo = parser.result as wasmparser.ISourceMappingURL;
+        const sectionInfo = parser.result as wasmparser.ISourceMappingURL;
         result.sourceMapUrl = bytes2str(sectionInfo.url);
         break;
       }

@@ -15,7 +15,7 @@ export type ImportFunction = (args: number[], memory: Uint8Array, globals: numbe
 export class WasmDAPServer {
   private _serverInstance: _WasmDAPServer | null = null;
   private _server: grpc.Server | null = null;
-  private _importFunction: Record<string, Record<string, ImportFunction>> = {};
+  private _importFunction: Record<string, Record<string, ImportFunction | undefined> | undefined> = {};
   constructor(private port: string, private errorHandler: (reason: string) => void) {}
 
   set ast(ast: WasmAst) {
@@ -30,10 +30,12 @@ export class WasmDAPServer {
         const memory = req.getMemory_asU8();
         const globals = req.getGlobalsList();
         const globalNumber = globals.map(value2number);
-        const [moduleName, fieldName] = ast.importFunctionName.get(funcIndex)!;
+        const importFunctionName = ast.importFunctionName.get(funcIndex);
+        assert(importFunctionName);
+        const [moduleName, fieldName] = importFunctionName;
         console.log(moduleName, fieldName);
         let func: ImportFunction | undefined = undefined;
-        let module = this._importFunction[moduleName];
+        const module = this._importFunction[moduleName];
         if (module) {
           func = module[fieldName];
         }
@@ -41,8 +43,8 @@ export class WasmDAPServer {
           this.errorHandler(`no import function "${moduleName}.${fieldName}"`);
           return;
         }
-        let ret = func(args, memory, globalNumber);
-        let reply = new proto.RunImportFunctionReply();
+        const ret = func(args, memory, globalNumber);
+        const reply = new proto.RunImportFunctionReply();
         reply.setMemory(memory);
         globals.forEach((global, index) => {
           updateValue(global, globalNumber[index]);
@@ -57,8 +59,9 @@ export class WasmDAPServer {
   }
 
   registeryImportFunction(moduleName: string, fieldName: string, importFunction: ImportFunction) {
-    this._importFunction[moduleName] ??= {};
-    this._importFunction[moduleName][fieldName] = importFunction;
+    const module = this._importFunction[moduleName] ?? {};
+    module[fieldName] = importFunction;
+    this._importFunction[moduleName] = module;
   }
 
   start() {
@@ -70,7 +73,7 @@ export class WasmDAPServer {
     this._server.addService(WasmDAPService, this._serverInstance);
     this._server.bindAsync(this.port, grpc.ServerCredentials.createInsecure(), (err, port) => {
       if (err) {
-        this.errorHandler(`start debug server in ${port} failed due to ${err}`);
+        this.errorHandler(`start debug server in ${port} failed due to ${err.message}`);
       } else {
         if (this._server) {
           this._server.start();

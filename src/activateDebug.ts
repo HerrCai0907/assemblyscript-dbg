@@ -22,13 +22,17 @@ export function activateDebug(context: vscode.ExtensionContext, factory?: vscode
         targetResource = vscode.window.activeTextEditor.document.uri;
       }
       if (targetResource) {
-        vscode.debug.startDebugging(undefined, {
-          type: DEBUG_TYPE,
-          name: "Debug File",
-          request: "launch",
-          program: targetResource.fsPath,
-          cwd: vscode.workspace.getWorkspaceFolder(targetResource)?.uri.fsPath ?? "",
-        });
+        vscode.debug
+          .startDebugging(undefined, {
+            type: DEBUG_TYPE,
+            name: "Debug File",
+            request: "launch",
+            program: targetResource.fsPath,
+            cwd: vscode.workspace.getWorkspaceFolder(targetResource)?.uri.fsPath ?? "",
+          })
+          .then(undefined, (reason) => {
+            void vscode.window.showErrorMessage(`assemblyscript debugger carash due to ${reason}`);
+          });
       }
     })
   );
@@ -56,12 +60,12 @@ class InlineDebugAdapterFactory implements vscode.DebugAdapterDescriptorFactory 
       this.server = spawn("wasmdbg-grpc", { stdio: "pipe" });
       this.server.on("close", (code, signal) => {
         if (code != 0 && signal !== "SIGKILL") {
-          vscode.window.showErrorMessage("wasmdbg crash!");
+          void vscode.window.showErrorMessage("wasmdbg crash!");
           this.session?.sendEvent(new TerminatedEvent());
         }
       });
     } catch (e) {
-      vscode.window.showErrorMessage(`wasmdbg start failed due to ${e}`);
+      void vscode.window.showErrorMessage(`wasmdbg start failed due to ${e}`);
     }
 
     this.session = new DebugSession();

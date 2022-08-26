@@ -4,16 +4,17 @@ import { DebugSession } from "./debug";
 export class DebugSessionWrapper {
   constructor(private session: DebugSession) {}
   logInfo(message: string) {
-    let e = new OutputEvent(message, "console");
+    const e = new OutputEvent(message, "console");
     this.session.sendEvent(e);
   }
   logError(message: string) {
-    let e = new OutputEvent(message, "stderr");
+    const e = new OutputEvent(message, "stderr");
     this.session.sendEvent(e);
   }
-  throwException(e: unknown) {
-    this.logError(`${e}`);
+  throwException(e: Error) {
+    this.logError(`${e.message}`);
     this.session.sendEvent(new StoppedEvent("exception"));
+    throw e;
   }
   get helper() {
     return {

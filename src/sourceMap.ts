@@ -27,10 +27,10 @@ export class SourceMapAnalysis {
       if (ast.sourceMapUrl == null) {
         return null;
       }
-      let sourceMapUrl = join(dirname(wasmFilePath), ast.sourceMapUrl);
-      const sourceMap: RawSourceMap = JSON.parse(await readFile(sourceMapUrl, { encoding: "utf8" }));
+      const sourceMapUrl = join(dirname(wasmFilePath), ast.sourceMapUrl);
+      const sourceMap = JSON.parse(await readFile(sourceMapUrl, { encoding: "utf8" })) as RawSourceMap;
       return SourceMapConsumer.with(sourceMap, null, (consumer) => {
-        let binaryToSourceMapping = new Map();
+        const binaryToSourceMapping = new Map();
         consumer.eachMapping((m) => {
           let source = sourceMap.sourceRoot ? relative(sourceMap.sourceRoot, m.source) : m.source;
           source = source.replace(/^~lib/, "node_modules/assemblyscript/std/assembly");
