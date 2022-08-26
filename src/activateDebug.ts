@@ -7,6 +7,8 @@
 
 "use strict";
 
+import { TerminatedEvent } from "@vscode/debugadapter";
+import { ChildProcess, execSync, spawn } from "child_process";
 import * as vscode from "vscode";
 import { ProviderResult } from "vscode";
 import { DEBUG_TYPE } from "./constant";
@@ -42,12 +44,34 @@ export function activateDebug(context: vscode.ExtensionContext, factory?: vscode
 
 class InlineDebugAdapterFactory implements vscode.DebugAdapterDescriptorFactory {
   private session: DebugSession | null = null;
+  private server: ChildProcess | null = null;
 
   createDebugAdapterDescriptor(_session: vscode.DebugSession): ProviderResult<vscode.DebugAdapterDescriptor> {
+    try {
+      // update
+      console.log("installing wasm-grpc");
+      execSync("cargo install wasmdbg-grpc --git https://github.com/HerrCai0907/wasmdbg.git", { stdio: "inherit" });
+      // start server
+      console.log("starting wasm-grpc");
+      this.server = spawn("wasmdbg-grpc", { stdio: "pipe" });
+      this.server.on("close", (code, signal) => {
+        if (code != 0 && signal !== "SIGKILL") {
+          vscode.window.showErrorMessage("wasmdbg crash!");
+          this.session?.sendEvent(new TerminatedEvent());
+        }
+      });
+    } catch (e) {
+      vscode.window.showErrorMessage(`wasmdbg start failed due to ${e}`);
+    }
+
     this.session = new DebugSession();
     return new vscode.DebugAdapterInlineImplementation(this.session);
   }
   dispose() {
     this.session?.dispose();
+    this.session = null;
+    console.log("stop wasm-grpc");
+    this.server?.kill("SIGKILL");
+    this.server = null;
   }
 }
