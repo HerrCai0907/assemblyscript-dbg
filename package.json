@@ -1,9 +1,9 @@
 {
   "name": "assemblyscript-dbg",
-  "displayName": "Mock Debug",
-  "version": "0.51.0",
-  "publisher": "ms-vscode",
-  "description": "Starter extension for developing debug adapters for VS Code.",
+  "displayName": "Assemblyscript-Debugger",
+  "version": "0.0.1",
+  "publisher": "CongcongCai",
+  "description": "Assemblyscript Debugger",
   "author": {
     "name": "Congcong Cai <congcong.ca.cai@bmw.com>"
   },
