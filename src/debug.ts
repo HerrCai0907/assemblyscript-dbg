@@ -21,6 +21,7 @@ import { FixedScopeId, ScopeId } from "./scopeId";
 import { WasmDAPServer } from "./dapServer";
 import { value2str } from "./utils";
 import { abort, trace } from "./importFunction";
+import { DebugSessionWrapper } from "./DebugSessionWrapper";
 
 /**
  * This interface describes the mock-debug specific launch attributes
@@ -33,6 +34,8 @@ interface ILaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
   program: string;
   /** An absolute path to the "workspace". */
   cwd: string;
+  /** List of user-defined API */
+  apiFiles?: string[];
 }
 
 export class DebugSession extends LoggingDebugSession {
@@ -40,7 +43,7 @@ export class DebugSession extends LoggingDebugSession {
 
   private _configurationDone = false;
   private _client = new WasmDebuggerClient("[::1]:50051", grpc.credentials.createInsecure());
-  private _server = new WasmDAPServer("[::1]:50052", this, this.errorHandler);
+  private _server = new WasmDAPServer("[::1]:50052", this.errorHandler);
   private _sourceMapAnalysis: SourceMapAnalysis | null = null;
 
   constructor() {
@@ -101,8 +104,46 @@ export class DebugSession extends LoggingDebugSession {
 
   protected async launchRequest(response: DebugProtocol.LaunchResponse, args: ILaunchRequestArguments) {
     this._sourceMapAnalysis = new SourceMapAnalysis(args.program, args.cwd);
-    this._server.registeryImportFunction("env", "trace", trace);
-    this._server.registeryImportFunction("env", "abort", abort);
+    // register default API
+    this._server.registeryImportFunction("env", "trace", (args: number[], memory: Uint8Array) => {
+      try {
+        return trace(new DebugSessionWrapper(this), args, memory);
+      } catch (e) {
+        this.sendEvent(new OutputEvent(`user defined function crash due to ${e}`, "stderr"));
+        this.sendEvent(new StoppedEvent("exception"));
+        return null;
+      }
+    });
+    this._server.registeryImportFunction("env", "abort", (args: number[], memory: Uint8Array) => {
+      try {
+        return abort(new DebugSessionWrapper(this), args, memory);
+      } catch (e) {
+        this.sendEvent(new OutputEvent(`user defined function crash due to ${e}`, "stderr"));
+        this.sendEvent(new StoppedEvent("exception"));
+        return null;
+      }
+    });
+    // register user defined API
+    args.apiFiles?.forEach((file) => {
+      let apis = require(file);
+      for (const moduleName in apis) {
+        for (const fieldName in apis[moduleName]) {
+          this._server.registeryImportFunction(
+            moduleName,
+            fieldName,
+            (args: number[], memory: Uint8Array, globals: number[]) => {
+              try {
+                return apis[moduleName][fieldName](new DebugSessionWrapper(this), args, memory, globals);
+              } catch (e) {
+                this.sendEvent(new OutputEvent(`user defined function crash due to ${e}`, "stderr"));
+                this.sendEvent(new StoppedEvent("exception"));
+                return null;
+              }
+            }
+          );
+        }
+      }
+    });
     // wait 1 second until configuration has finished (and configurationDoneRequest has been called)
     let available = await new Promise<boolean>((resolve) => {
       setTimeout(() => {

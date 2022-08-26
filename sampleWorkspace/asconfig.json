@@ -8,6 +8,7 @@
     }
   },
   "options": {
-    "disable": ["sign-extension", "nontrapping-f2i", "bulk-memory"]
+    "disable": ["sign-extension", "nontrapping-f2i", "bulk-memory"],
+    "runtime": "stub"
   }
 }

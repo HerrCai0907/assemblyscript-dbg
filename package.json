@@ -127,21 +127,23 @@
           {
             "type": "assemblyscript-debug",
             "request": "launch",
-            "name": "Ask for file name",
+            "name": "Assemblyscript",
             "program": "${workspaceFolder}/build/debug.wasm",
-            "cwd": "${workspaceFolder}"
+            "cwd": "${workspaceFolder}",
+            "apiFiles": "[]"
           }
         ],
         "configurationSnippets": [
           {
-            "label": "Mock Debug: Launch",
+            "label": "Assemblyscript: Launch",
             "description": "A new configuration for 'debugging' a user selected markdown file.",
             "body": {
               "type": "assemblyscript-debug",
               "request": "launch",
-              "name": "Ask for file name",
+              "name": "Assemblyscript",
               "program": "^\"\\${workspaceFolder}/\\${command:AskForProgramName}\"",
-              "cwd": "^\"\\${workspaceFolder}"
+              "cwd": "^\"\\${workspaceFolder}\"",
+              "apiFiles": "[]"
             }
           }
         ]
