@@ -5,3 +5,4 @@ node_modules
 
 src/proto/
 sampleWorkspace/build/
+sampleWorkspace/package-lock.json

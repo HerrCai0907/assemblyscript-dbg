@@ -1,5 +1,4 @@
 import * as grpc from "@grpc/grpc-js";
-import { DebugSession } from "@vscode/debugadapter";
 import assert = require("assert");
 import { IWasmDAPServer, WasmDAPService } from "./proto/interface_grpc_pb";
 import * as proto from "./proto/interface_pb";
@@ -11,13 +10,13 @@ class _WasmDAPServer implements IWasmDAPServer {
   constructor(public runImportFunction: grpc.handleUnaryCall<proto.RunImportFunctionRequest, proto.RunImportFunctionReply>) {}
 }
 
-export type ImportFunction = (session: DebugSession, args: number[], memory: Uint8Array, globals: number[]) => number | null;
+export type ImportFunction = (args: number[], memory: Uint8Array, globals: number[]) => number | null;
 
 export class WasmDAPServer {
   private _serverInstance: _WasmDAPServer | null = null;
   private _server: grpc.Server | null = null;
   private _importFunction: Record<string, Record<string, ImportFunction>> = {};
-  constructor(private port: string, private session: DebugSession, private errorHandler: (reason: string) => void) {}
+  constructor(private port: string, private errorHandler: (reason: string) => void) {}
 
   set ast(ast: WasmAst) {
     this._serverInstance = new _WasmDAPServer(
@@ -42,7 +41,7 @@ export class WasmDAPServer {
           this.errorHandler(`no import function "${moduleName}.${fieldName}"`);
           return;
         }
-        let ret = func(this.session, args, memory, globalNumber);
+        let ret = func(args, memory, globalNumber);
         let reply = new proto.RunImportFunctionReply();
         reply.setMemory(memory);
         globals.forEach((global, index) => {
