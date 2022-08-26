@@ -4,7 +4,9 @@ module.exports = {
       // actually extension already provide it, but you can replace it by yourself
       const offset = args[0];
       const n = args[1];
-      extension.logInfo(`trace: ${extension.getString(offset, memory)}${n ? " " : ""}${args.slice(2, 2 + n).join(", ")}\n`);
+      extension.logInfo(
+        `trace: ${extension.helper.getString(offset, memory)}${n ? " " : ""}${args.slice(2, 2 + n).join(", ")}\n`
+      );
       return null;
     },
   },
