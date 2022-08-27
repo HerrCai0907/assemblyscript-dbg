@@ -4,11 +4,11 @@ import { DebugSession } from "./debug";
 export class DebugSessionWrapper {
   constructor(private session: DebugSession) {}
   logInfo(message: string) {
-    const e = new OutputEvent(message, "console");
+    const e = new OutputEvent(message + "\n", "console");
     this.session.sendEvent(e);
   }
   logError(message: string) {
-    const e = new OutputEvent(message, "stderr");
+    const e = new OutputEvent(message + "\n", "stderr");
     this.session.sendEvent(e);
   }
   throwException(e: Error) {

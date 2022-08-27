@@ -21,7 +21,7 @@ import { FixedScopeId, ScopeId } from "./scopeId";
 import { WasmDAPServer } from "./dapServer";
 import { value2str } from "./utils";
 import { abort, trace } from "./importFunction";
-import { DebugSessionWrapper } from "./DebugSessionWrapper";
+import { DebugSessionWrapper } from "./debugSession";
 
 /**
  * This interface describes the mock-debug specific launch attributes
@@ -50,16 +50,17 @@ export class DebugSession extends LoggingDebugSession {
   private static threadID = 1;
 
   private _configurationDone = false;
-  private _client = new WasmDebuggerClient("[::1]:50051", grpc.credentials.createInsecure());
+  private _client: WasmDebuggerClient;
   private _server: WasmDAPServer;
   private _sourceMapAnalysis: SourceMapAnalysis | null = null;
 
-  constructor() {
+  constructor(debuggerPort: number, dapPort: number) {
     super("assemblyscript-debugger.txt");
     // this debugger uses zero-based lines and columns
     this.setDebuggerLinesStartAt1(false);
     this.setDebuggerColumnsStartAt1(false);
-    this._server = new WasmDAPServer("[::1]:50052", this.errorHandler);
+    this._client = new WasmDebuggerClient(`[::1]:${debuggerPort}`, grpc.credentials.createInsecure());
+    this._server = new WasmDAPServer(`127.0.0.1:${dapPort}`, this.errorHandler);
   }
 
   /**

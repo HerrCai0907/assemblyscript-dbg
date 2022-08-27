@@ -5,7 +5,7 @@ module.exports = {
       const offset = args[0];
       const n = args[1];
       extension.logInfo(
-        `trace: ${extension.helper.getString(offset, memory)}${n ? " " : ""}${args.slice(2, 2 + n).join(", ")}\n`
+        `trace: ${extension.helper.getString(offset, memory)}${n ? " " : ""}${args.slice(2, 2 + n).join(", ")}`
       );
       return null;
     },

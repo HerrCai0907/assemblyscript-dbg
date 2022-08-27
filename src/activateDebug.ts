@@ -1,18 +1,9 @@
-/*---------------------------------------------------------
- * Copyright (C) Microsoft Corporation. All rights reserved.
- *--------------------------------------------------------*/
-/*
- * activateMockDebug.ts containes the shared extension code that can be executed both in node.js and the browser.
- */
-
-"use strict";
-
 import { TerminatedEvent } from "@vscode/debugadapter";
-import { ChildProcess, execSync, spawn } from "child_process";
+import { ChildProcess, execSync, spawn, spawnSync } from "child_process";
 import * as vscode from "vscode";
-import { ProviderResult } from "vscode";
 import { DEBUG_TYPE } from "./constant";
 import { DebugSession } from "./debug";
+import getPort from "get-port";
 
 export function activateDebug(context: vscode.ExtensionContext, factory?: vscode.DebugAdapterDescriptorFactory) {
   context.subscriptions.push(
@@ -50,26 +41,26 @@ class InlineDebugAdapterFactory implements vscode.DebugAdapterDescriptorFactory 
   private session: DebugSession | null = null;
   private server: ChildProcess | null = null;
 
-  createDebugAdapterDescriptor(_session: vscode.DebugSession): ProviderResult<vscode.DebugAdapterDescriptor> {
+  async createDebugAdapterDescriptor(_session: vscode.DebugSession) {
     try {
-      // update
-      console.log("installing wasm-grpc");
-      execSync("cargo install wasmdbg-grpc --git https://github.com/HerrCai0907/wasmdbg.git", { stdio: "inherit" });
-      // start server
-      console.log("starting wasm-grpc");
-      this.server = spawn("wasmdbg-grpc", { stdio: "pipe" });
+      const dapPort = await getPort();
+      const debuggerPort = dapPort;
+      console.log(`starting wasm-grpc at ${debuggerPort} and ${dapPort}`);
+      this.server = spawn("wasmdbg-grpc", ["-s", `[::1]:${debuggerPort}`, "-c", `http://127.0.0.1:${dapPort}`], {
+        stdio: "inherit",
+      });
       this.server.on("close", (code, signal) => {
         if (code != 0 && signal !== "SIGKILL") {
-          void vscode.window.showErrorMessage("wasmdbg crash!");
+          void vscode.window.showErrorMessage(`wasmdbg crash! ${code} ${signal}`);
           this.session?.sendEvent(new TerminatedEvent());
         }
+        this.server = null;
       });
+      this.session = new DebugSession(debuggerPort, dapPort);
+      return new vscode.DebugAdapterInlineImplementation(this.session);
     } catch (e) {
       void vscode.window.showErrorMessage(`wasmdbg start failed due to ${e}`);
     }
-
-    this.session = new DebugSession();
-    return new vscode.DebugAdapterInlineImplementation(this.session);
   }
   dispose() {
     this.session?.dispose();
