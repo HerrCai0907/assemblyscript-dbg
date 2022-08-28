@@ -120,6 +120,10 @@
                 "type": "string",
                 "description": "Absolute path to workspace.",
                 "default": "${workspaceFolder}"
+              },
+              "apiFiles": {
+                "type": "array",
+                "description": "*.js files to provide import function. example see 'https://github.com/HerrCai0907/assemblyscript-dbg/blob/main/sampleWorkspace/api.cjs'"
               }
             }
           }
