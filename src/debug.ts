@@ -348,7 +348,7 @@ export class DebugSession extends LoggingDebugSession {
   protected async variablesRequest(
     response: DebugProtocol.VariablesResponse,
     args: DebugProtocol.VariablesArguments,
-    request?: DebugProtocol.Request
+    _request?: DebugProtocol.Request
   ): Promise<void> {
     if (this._status == Status.FINISH) {
       this.sendResponse(response);
@@ -359,8 +359,21 @@ export class DebugSession extends LoggingDebugSession {
     assert(ast);
     switch (args.variablesReference) {
       case FixedScopeId.Global: {
-        // TODO
-        return;
+        const reply = await new Promise<proto.GetGlobalReply>((resolve) => {
+          this._client.getGlobal(new proto.NullRequest(), (err, reply) => {
+            if (err) {
+              this.errorHandler(`connect with debug server failed: ${err.name} ${err.details}`);
+            }
+            resolve(reply);
+          });
+        });
+        if (reply.getStatus() == proto.Status.NOK) {
+          this.errorHandler(`get global stack failed due to "${reply.getErrorReason()}"`);
+          return;
+        }
+        valueList = reply.getGlobalsList().map((value, index) => {
+          return { name: ast.globalName[index], value };
+        });
         break;
       }
       case FixedScopeId.ValueStack: {
@@ -376,8 +389,8 @@ export class DebugSession extends LoggingDebugSession {
           this.errorHandler(`get value stack failed due to "${reply.getErrorReason()}"`);
           return;
         }
-        valueList = reply.getValuesList().map((values) => {
-          return { value: values };
+        valueList = reply.getValuesList().map((value) => {
+          return { value };
         });
         break;
       }
@@ -400,9 +413,9 @@ export class DebugSession extends LoggingDebugSession {
         if (funcIndex != undefined) {
           localName = ast.localName[funcIndex];
         }
-        valueList = reply.getLocalsList().map((locals, index) => {
+        valueList = reply.getLocalsList().map((value, index) => {
           const name = localName ? localName[index] : undefined;
-          return { name, value: locals };
+          return { name, value };
         });
         break;
       }

@@ -1,7 +1,7 @@
 export enum FixedScopeId {
-  Global = 0,
   ValueStack = 1,
-  StackLocalBase = 2,
+  Global = 2,
+  StackLocalBase = 10,
 }
 
 export class ScopeId {

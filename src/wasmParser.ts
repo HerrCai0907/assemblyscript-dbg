@@ -1,11 +1,12 @@
 import assert = require("assert");
-import * as wasmparser from "wasmparser";
+import * as wasmparser from "wasmparser/dist/cjs/WasmParser";
 
 export interface WasmAst {
   sourceMapUrl: string | null;
   instructionMap: number[][];
-  functionName: (string | undefined)[];
-  localName: ((string | undefined)[] | undefined)[];
+  functionName: Array<string | undefined>;
+  localName: Array<Array<string | undefined> | undefined>;
+  globalName: Array<string | undefined>;
   importFunctionName: Map<number, [string, string]>;
 }
 
@@ -19,6 +20,7 @@ export function wasmParser(buf: Uint8Array): WasmAst {
     sourceMapUrl: null,
     functionName: [],
     localName: [],
+    globalName: [],
     importFunctionName: new Map(),
   };
   let currentFunction: number[] = [];
@@ -63,6 +65,13 @@ export function wasmParser(buf: Uint8Array): WasmAst {
             for (const funcName of (nameSection as wasmparser.IFunctionNameEntry).names) {
               result.functionName[funcName.index] = bytes2str(funcName.name);
             }
+            break;
+          }
+          case wasmparser.NameType.Global: {
+            const globalNames = nameSection as wasmparser.IGlobalNameEntry;
+            globalNames.names.forEach((global) => {
+              result.globalName[global.index] = bytes2str(global.name);
+            });
             break;
           }
           case wasmparser.NameType.Local: {
