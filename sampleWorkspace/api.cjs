@@ -13,6 +13,9 @@ module.exports = {
   index: {
     getI32: (extension, args, memory, globals) => {
       extension.logInfo(`call getI32, will return ${1024}`);
+      extension.logInfo(globals.join(", "))
+      globals[0] = 1111
+      extension.logInfo(globals.join(", "))
       return 1024;
     },
   },

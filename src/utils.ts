@@ -46,13 +46,17 @@ export function value2str(value: proto.Value | undefined): string {
 export function updateValue(value: proto.Value, updateValue: number) {
   switch (value.getValueCase()) {
     case proto.Value.ValueCase.I32:
-      return new proto.Value().setI32(updateValue);
+      value.setI32(updateValue);
+      break;
     case proto.Value.ValueCase.I64:
-      return new proto.Value().setI64(updateValue);
+      value.setI64(updateValue);
+      break;
     case proto.Value.ValueCase.F32:
-      return new proto.Value().setF32(updateValue);
+      value.setF32(updateValue);
+      break;
     case proto.Value.ValueCase.F64:
-      return new proto.Value().setF64(updateValue);
+      value.setF64(updateValue);
+      break;
   }
 }
 
