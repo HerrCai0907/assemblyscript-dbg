@@ -19,7 +19,7 @@ import { SourceMapAnalysis, SourcePosition } from "./sourceMap";
 import assert = require("assert");
 import { FixedScopeId, ScopeId } from "./scopeId";
 import { WasmDAPServer } from "./dapServer";
-import { value2str } from "./utils";
+import { sleep, value2str } from "./utils";
 import { abort, trace } from "./importFunction";
 import { DebugSessionWrapper } from "./debugSession";
 
@@ -46,13 +46,21 @@ type ApiCollection = Record<
   | undefined
 >;
 
+enum Status {
+  INIT,
+  FREE,
+  STARTING,
+  RUNNING,
+  FINISH,
+}
+
 export class DebugSession extends LoggingDebugSession {
   private static threadID = 1;
 
-  private _configurationDone = false;
   private _client: WasmDebuggerClient;
   private _server: WasmDAPServer;
   private _sourceMapAnalysis: SourceMapAnalysis | null = null;
+  private _status: Status = Status.INIT;
 
   constructor(debuggerPort: number, dapPort: number) {
     super("assemblyscript-debugger.txt");
@@ -91,7 +99,7 @@ export class DebugSession extends LoggingDebugSession {
     args: DebugProtocol.ConfigurationDoneArguments
   ): void {
     super.configurationDoneRequest(response, args);
-    this._configurationDone = true;
+    this._status = Status.FREE;
   }
 
   protected disconnectRequest(
@@ -100,6 +108,7 @@ export class DebugSession extends LoggingDebugSession {
     request?: DebugProtocol.Request
   ): void {
     console.log(`disconnectRequest suspend: ${args.suspendDebuggee}, terminate: ${args.terminateDebuggee}`);
+    this._status = Status.INIT;
   }
 
   dispose() {
@@ -158,16 +167,20 @@ export class DebugSession extends LoggingDebugSession {
         }
       }
     });
-    // wait 1 second until configuration has finished (and configurationDoneRequest has been called)
-    const available = await new Promise<boolean>((resolve) => {
-      setTimeout(() => {
-        resolve(this._configurationDone);
-      }, 1000);
-    });
-    if (!available) {
+    // wait 1 second * 10 times until configuration has finished (and configurationDoneRequest has been called)
+    let retryTime = 5;
+    const waitTime = 1000;
+    for (; retryTime > 0; retryTime--) {
+      if (this._status != Status.INIT) {
+        break;
+      }
+      await sleep(waitTime);
+    }
+    if (retryTime == 0) {
       this.errorHandler("configuration failed");
       return;
     }
+    this._status = Status.STARTING;
     // start server
     this._server.ast = await this._sourceMapAnalysis.ast;
     this._server.start();
@@ -184,9 +197,18 @@ export class DebugSession extends LoggingDebugSession {
       this.errorHandler(`load module failed due to "${loadReply.errorReason}"`);
       return;
     }
+    this._status = Status.RUNNING;
     await this.runCode(proto.RunCodeType.START);
 
     this.sendEvent(new StoppedEvent("entry", DebugSession.threadID));
+    this.sendResponse(response);
+  }
+  protected async continueRequest(
+    response: DebugProtocol.ContinueResponse,
+    args: DebugProtocol.ContinueArguments,
+    request?: DebugProtocol.Request | undefined
+  ) {
+    await this.runCode(proto.RunCodeType.CONTINUE);
     this.sendResponse(response);
   }
   protected async stepInRequest(response: DebugProtocol.StepInResponse, args: DebugProtocol.StepInArguments) {
@@ -214,9 +236,17 @@ export class DebugSession extends LoggingDebugSession {
         resolve(reply.toObject());
       });
     });
-    if (reply.status == proto.Status.NOK) {
-      this.errorHandler(`excute failed due to: ${reply.errorReason}`);
-      return false;
+    switch (reply.status) {
+      case proto.Status.OK:
+        break;
+      case proto.Status.NOK:
+        this.errorHandler(`execute failed due to: ${reply.errorReason}`);
+        break;
+      case proto.Status.FINISH:
+        this.sendEvent(new OutputEvent("execute finish.\n", "console"));
+        this.sendEvent(new TerminatedEvent());
+        this._status = Status.FINISH;
+        break;
     }
   }
 
@@ -234,6 +264,10 @@ export class DebugSession extends LoggingDebugSession {
     this.sendResponse(response);
   }
   protected async stackTraceRequest(response: DebugProtocol.StackTraceResponse, args: DebugProtocol.StackTraceArguments) {
+    if (this._status == Status.FINISH) {
+      this.sendResponse(response);
+      return;
+    }
     const reply = await new Promise<proto.GetCallStackReply.AsObject>((resolve) => {
       this._client.getCallStack(new proto.GetCallStackRequest(), (err, reply) => {
         if (err) {
@@ -316,6 +350,10 @@ export class DebugSession extends LoggingDebugSession {
     args: DebugProtocol.VariablesArguments,
     request?: DebugProtocol.Request
   ): Promise<void> {
+    if (this._status == Status.FINISH) {
+      this.sendResponse(response);
+      return;
+    }
     let valueList: { name?: string; value?: proto.Value }[] = [];
     const ast = await this._sourceMapAnalysis?.ast;
     assert(ast);
@@ -400,6 +438,7 @@ export class DebugSession extends LoggingDebugSession {
   }
 
   private errorHandler = (reason: string) => {
+    this._status = Status.FREE;
     void vscode.window.showErrorMessage(reason);
     const e = new OutputEvent(reason, "stderr");
     this.sendEvent(e);

@@ -55,3 +55,11 @@ export function updateValue(value: proto.Value, updateValue: number) {
       return new proto.Value().setF64(updateValue);
   }
 }
+
+export async function sleep(timeMs: number) {
+  return new Promise<void>((resolved) => {
+    setTimeout(() => {
+      resolved();
+    }, timeMs);
+  });
+}
