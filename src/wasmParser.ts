@@ -4,9 +4,9 @@ import * as wasmparser from "wasmparser/dist/cjs/WasmParser";
 export interface WasmAst {
   sourceMapUrl: string | null;
   instructionMap: number[][];
-  functionName: Array<string | undefined>;
-  localName: Array<Array<string | undefined> | undefined>;
-  globalName: Array<string | undefined>;
+  functionName: (string | undefined)[];
+  localName: ((string | undefined)[] | undefined)[];
+  globalName: (string | undefined)[];
   importFunctionName: Map<number, [string, string]>;
 }
 

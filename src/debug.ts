@@ -185,16 +185,16 @@ export class DebugSession extends LoggingDebugSession {
     this._server.ast = await this._sourceMapAnalysis.ast;
     this._server.start();
     // load module
-    const loadReply = await new Promise<proto.LoadReply.AsObject>((resolve) => {
+    const loadReply = await new Promise<proto.NormalReply>((resolve) => {
       this._client.loadModule(new proto.LoadRequest().setFileName(args.program), (err, reply) => {
         if (err) {
           this.errorHandler(`connect with debug server failed: ${err.name} ${err.details}`);
         }
-        resolve(reply.toObject());
+        resolve(reply);
       });
     });
-    if (loadReply.status == proto.Status.NOK) {
-      this.errorHandler(`load module failed due to "${loadReply.errorReason}"`);
+    if (loadReply.getStatus() == proto.Status.NOK) {
+      this.errorHandler(`load module failed due to "${loadReply.getErrorReason()}"`);
       return;
     }
     this._status = Status.RUNNING;
@@ -268,16 +268,16 @@ export class DebugSession extends LoggingDebugSession {
       this.sendResponse(response);
       return;
     }
-    const reply = await new Promise<proto.GetCallStackReply.AsObject>((resolve) => {
-      this._client.getCallStack(new proto.GetCallStackRequest(), (err, reply) => {
+    const reply = await new Promise<proto.GetCallStackReply>((resolve) => {
+      this._client.getCallStack(new proto.NullRequest(), (err, reply) => {
         if (err) {
           this.errorHandler(`connect with debug server failed: ${err.name} ${err.details}`);
         }
-        resolve(reply.toObject());
+        resolve(reply);
       });
     });
-    if (reply.status == proto.Status.NOK) {
-      this.errorHandler(`get stack failed due to "${reply.errorReason}"`);
+    if (reply.getStatus() == proto.Status.NOK) {
+      this.errorHandler(`get stack failed due to "${reply.getErrorReason()}"`);
       return;
     }
     assert(this._sourceMapAnalysis);
@@ -286,19 +286,19 @@ export class DebugSession extends LoggingDebugSession {
     if (binaryToSourceMapping) {
       const instrTobinaryMapping = await this._sourceMapAnalysis.instrToBinaryMapping;
       response.body = {
-        stackFrames: reply.stacksList.map((stack, index, arr) => {
+        stackFrames: reply.getStacksList().map((stack, index, arr) => {
           let sourcePosition: SourcePosition | undefined = undefined;
-          let instrIndex = stack.instrIndex;
+          let instrIndex = stack.getInstrIndex();
           if (index != 0) {
             // if not in top call stack, instr is return addr, so need to reduce 1 for call instr
             instrIndex--;
           }
           const orginInstrIndex = instrIndex;
           for (; instrIndex >= 0; instrIndex--) {
-            if (stack.funcIndex >= instrTobinaryMapping.length) {
+            if (stack.getFuncIndex() >= instrTobinaryMapping.length) {
               break;
             }
-            const functionInstr = instrTobinaryMapping[stack.funcIndex];
+            const functionInstr = instrTobinaryMapping[stack.getFuncIndex()];
             if (instrIndex >= functionInstr.length) {
               instrIndex = functionInstr.length;
               continue;
@@ -319,18 +319,18 @@ export class DebugSession extends LoggingDebugSession {
             }
             return new StackFrame(
               index,
-              ast.functionName[stack.funcIndex] ?? stack.funcIndex.toString(),
+              ast.functionName[stack.getFuncIndex()] ?? stack.getFuncIndex().toString(),
               this.createSource(sourcePosition.source),
               sourcePosition.line
             );
           } else {
-            return new StackFrame(index, ast.functionName[stack.funcIndex] ?? stack.funcIndex.toString());
+            return new StackFrame(index, ast.functionName[stack.getFuncIndex()] ?? stack.getFuncIndex().toString());
           }
         }),
       };
     } else {
       response.body = {
-        stackFrames: reply.stacksList.map((stack, index) => new StackFrame(index, stack.funcIndex.toString())),
+        stackFrames: reply.getStacksList().map((stack, index) => new StackFrame(index, stack.getFuncIndex().toString())),
       };
     }
     this.sendResponse(response);
