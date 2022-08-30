@@ -10,7 +10,7 @@ export interface SourcePosition {
 }
 
 type CodeOffset = number;
-type FunctionInstr = CodeOffset[];
+export type FunctionInstr = CodeOffset[];
 
 export class SourceMapAnalysis {
   rawBuffer: Promise<Buffer>;

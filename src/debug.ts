@@ -9,13 +9,14 @@ import {
   Source,
   TerminatedEvent,
   OutputEvent,
+  Breakpoint,
 } from "@vscode/debugadapter";
 import { DebugProtocol } from "@vscode/debugprotocol";
 import { WasmDebuggerClient } from "./proto/interface_grpc_pb";
 import * as grpc from "@grpc/grpc-js";
 import * as proto from "./proto/interface_pb";
 import { basename } from "path";
-import { SourceMapAnalysis, SourcePosition } from "./sourceMap";
+import { FunctionInstr, SourceMapAnalysis, SourcePosition } from "./sourceMap";
 import assert = require("assert");
 import { FixedScopeId, ScopeId } from "./scopeId";
 import { WasmDAPServer } from "./dapServer";
@@ -228,19 +229,19 @@ export class DebugSession extends LoggingDebugSession {
   }
 
   private async runCode(type: proto.RunCodeType) {
-    const reply = await new Promise<proto.RunCodeReply.AsObject>((resolve) => {
+    const reply = await new Promise<proto.RunCodeReply>((resolve) => {
       this._client.runCode(new proto.RunCodeRequest().setRunCodeType(type), (err, reply) => {
         if (err) {
           this.errorHandler(`connect with debug server failed: ${err.name} ${err.details}`);
         }
-        resolve(reply.toObject());
+        resolve(reply);
       });
     });
-    switch (reply.status) {
+    switch (reply.getStatus()) {
       case proto.Status.OK:
         break;
       case proto.Status.NOK:
-        this.errorHandler(`execute failed due to: ${reply.errorReason}`);
+        this.errorHandler(`execute failed due to: ${reply.getErrorReason()}`);
         break;
       case proto.Status.FINISH:
         this.sendEvent(new OutputEvent("execute finish.\n", "console"));
@@ -287,44 +288,28 @@ export class DebugSession extends LoggingDebugSession {
       const instrTobinaryMapping = await this._sourceMapAnalysis.instrToBinaryMapping;
       response.body = {
         stackFrames: reply.getStacksList().map((stack, index, arr) => {
-          let sourcePosition: SourcePosition | undefined = undefined;
           let instrIndex = stack.getInstrIndex();
+          const funcIndex = stack.getFuncIndex();
           if (index != 0) {
             // if not in top call stack, instr is return addr, so need to reduce 1 for call instr
             instrIndex--;
           }
-          const orginInstrIndex = instrIndex;
-          for (; instrIndex >= 0; instrIndex--) {
-            if (stack.getFuncIndex() >= instrTobinaryMapping.length) {
-              break;
-            }
-            const functionInstr = instrTobinaryMapping[stack.getFuncIndex()];
-            if (instrIndex >= functionInstr.length) {
-              instrIndex = functionInstr.length;
-              continue;
-            }
-            const binaryOffset = functionInstr[instrIndex];
-            if (binaryOffset) {
-              sourcePosition = binaryToSourceMapping.get(binaryOffset);
-              if (sourcePosition) {
-                break;
-              }
-            }
-          }
+          const sourcePosition = DebugSession.instr2source(
+            funcIndex,
+            instrIndex,
+            index == 0,
+            instrTobinaryMapping,
+            binaryToSourceMapping
+          );
           if (sourcePosition) {
-            if (index == 0 && instrIndex != orginInstrIndex) {
-              void vscode.window.showInformationMessage(
-                `stack trace may be incorrect, miss ${orginInstrIndex - instrIndex} instruction`
-              );
-            }
             return new StackFrame(
               index,
-              ast.functionName[stack.getFuncIndex()] ?? stack.getFuncIndex().toString(),
+              ast.functionName[funcIndex] ?? funcIndex.toString(),
               this.createSource(sourcePosition.source),
               sourcePosition.line
             );
           } else {
-            return new StackFrame(index, ast.functionName[stack.getFuncIndex()] ?? stack.getFuncIndex().toString());
+            return new StackFrame(index, ast.functionName[funcIndex] ?? funcIndex.toString());
           }
         }),
       };
@@ -448,6 +433,42 @@ export class DebugSession extends LoggingDebugSession {
       undefined,
       "assemblyscript-debug-adapter-data"
     );
+  }
+
+  private static instr2source(
+    funcIndex: number,
+    instrIndex: number,
+    displayMiss: boolean,
+    instrTobinaryMapping: FunctionInstr[],
+    binaryToSourceMapping: Map<number, SourcePosition>
+  ): SourcePosition | null {
+    let sourcePosition: SourcePosition | null = null;
+    const orginInstrIndex = instrIndex;
+    for (; instrIndex >= 0; instrIndex--) {
+      if (funcIndex >= instrTobinaryMapping.length) {
+        break;
+      }
+      const functionInstr = instrTobinaryMapping[funcIndex];
+      if (instrIndex >= functionInstr.length) {
+        instrIndex = functionInstr.length;
+        continue;
+      }
+      const binaryOffset = functionInstr[instrIndex];
+      if (binaryOffset) {
+        sourcePosition = binaryToSourceMapping.get(binaryOffset) ?? null;
+        if (sourcePosition) {
+          break;
+        }
+      }
+    }
+    if (sourcePosition) {
+      if (displayMiss && instrIndex != orginInstrIndex) {
+        void vscode.window.showInformationMessage(
+          `stack trace may be incorrect, miss ${orginInstrIndex - instrIndex} instruction`
+        );
+      }
+    }
+    return sourcePosition;
   }
 
   private errorHandler = (reason: string) => {
