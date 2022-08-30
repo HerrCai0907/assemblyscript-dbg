@@ -4,6 +4,11 @@ vscode extension for assemblyscript debugger
 
 ## How to use
 
+environment
+
+- rustc >= 1.63
+- protobuf >= 3.15
+
 Before using, please install wasmdbg-grpc from github
 
 ```bash
