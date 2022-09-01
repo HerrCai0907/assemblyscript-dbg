@@ -1,5 +1,6 @@
 import * as grpc from "@grpc/grpc-js";
 import assert = require("assert");
+import { logInfo } from "./channel";
 import { IMPORT_FUNC_DEBUG } from "./constant";
 import { IWasmDAPServer, WasmDAPService } from "./proto/interface_grpc_pb";
 import * as proto from "./proto/interface_pb";
@@ -34,7 +35,7 @@ export class WasmDAPServer {
         const importFunctionName = ast.importFunctionName.get(funcIndex);
         assert(importFunctionName);
         const [moduleName, fieldName] = importFunctionName;
-        if (IMPORT_FUNC_DEBUG) console.log(`call import function "${moduleName}.${fieldName}"`);
+        if (IMPORT_FUNC_DEBUG) logInfo(`call import function "${moduleName}.${fieldName}"`);
         let func: ImportFunction | undefined = undefined;
         const module = this._importFunction[moduleName];
         if (module) {

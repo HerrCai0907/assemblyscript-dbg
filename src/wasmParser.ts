@@ -1,4 +1,3 @@
-import assert = require("assert");
 import * as wasmparser from "wasmparser/dist/cjs/WasmParser";
 
 export interface WasmAst {
