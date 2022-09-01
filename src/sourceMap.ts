@@ -26,7 +26,7 @@ export class SourceMapAnalysis {
   ast: Promise<WasmAst>;
   binaryToSourceMapping: Promise<Map<BinaryOffset, SourcePosition> | null>;
   instrToBinaryMapping: Promise<FunctionInstr[]>;
-  sourceToInstrMapping: Promise<Map<FilePath, Map<Line, CodePosition>> | null>;
+  sourceToInstrMapping: Promise<Map<FilePath, Map<Line, CodePosition[]>> | null>;
 
   constructor(wasmFilePath: string, workSpacePath: string) {
     this.rawBuffer = readFile(wasmFilePath);
@@ -62,16 +62,21 @@ export class SourceMapAnalysis {
             binaryToInstrMapping.set(binaryOffset, { funcIndex, instrIndex });
           });
         });
-        const result = new Map<FilePath, Map<Line, CodePosition>>();
+        const result = new Map<FilePath, Map<Line, CodePosition[]>>();
         binaryToSourceMapping.forEach((sourcePosition, binaryOffset) => {
           const codePosition = binaryToInstrMapping.get(binaryOffset);
           assert(codePosition);
           let lineMap = result.get(sourcePosition.source);
           if (lineMap == undefined) {
-            lineMap = new Map<Line, CodePosition>();
+            lineMap = new Map<Line, CodePosition[]>();
             result.set(sourcePosition.source, lineMap);
           }
-          lineMap.set(sourcePosition.line, codePosition);
+          let codePositions = lineMap.get(sourcePosition.line);
+          if (codePositions == undefined) {
+            codePositions = [];
+            lineMap.set(sourcePosition.line, codePositions);
+          }
+          codePositions.push(codePosition);
         });
         return result;
       }
@@ -115,15 +120,15 @@ export function instr2source(
 
 export function source2instr(
   sourcePosition: SourcePosition,
-  sourceToInstrMapping: Map<FilePath, Map<Line, CodePosition>>
-): CodePosition | null {
+  sourceToInstrMapping: Map<FilePath, Map<Line, CodePosition[]>>
+): CodePosition[] {
   const lineMap = sourceToInstrMapping.get(sourcePosition.source);
   if (lineMap == undefined) {
-    return null;
+    return [];
   }
   const codePosition = lineMap.get(sourcePosition.line);
   if (codePosition == undefined) {
-    return null;
+    return [];
   }
   return codePosition;
 }
