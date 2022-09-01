@@ -201,6 +201,10 @@ export class DebugSession extends LoggingDebugSession {
       return;
     }
     this._status = Status.RUNNING;
+    const breakpointManager = await this.checkBreakpointManager();
+    if (breakpointManager) {
+      await breakpointManager.syncBreakpoints();
+    }
     await this.runCode(proto.RunCodeType.START);
 
     this.sendEvent(new StoppedEvent("entry", DebugSession.threadID));
@@ -272,21 +276,13 @@ export class DebugSession extends LoggingDebugSession {
       }
       const path = args.source.path as string;
       const source = new Source(args.source.name ?? path, path, undefined, args.source.origin, args.source.adapterData);
-      if (this._status != Status.RUNNING) {
-        // not init, disable all breakpoint
-        response.body = {
-          breakpoints: targetBreakpoint.map((bp) => {
-            return new Breakpoint(false, bp.line, undefined, source);
-          }),
-        };
-        return;
-      }
       if (breakpointManager == null) {
         return;
       }
       const actualBreakpointMap = await breakpointManager.updataBreakpoints(
         path,
-        targetBreakpoint.map((bp) => bp.line)
+        targetBreakpoint.map((bp) => bp.line),
+        this._status == Status.RUNNING // if running, breakpoint should be set immediately
       );
       response.body = {
         breakpoints: targetBreakpoint.map((bp) => {
