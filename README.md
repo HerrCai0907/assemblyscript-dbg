@@ -4,7 +4,7 @@ vscode extension for assemblyscript debugger
 
 ## How to use
 
-environment
+### environment
 
 - rustc >= 1.63
 - protobuf >= 3.15
@@ -14,6 +14,19 @@ Before using, please install wasmdbg-grpc from github
 ```bash
 cargo install wasmdbg-grpc --git https://github.com/HerrCai0907/wasmdbg.git
 ```
+
+### recommand compile flag
+
+```json
+"options": {
+  "disable": ["sign-extension", "nontrapping-f2i", "bulk-memory"],
+  "runtime": "stub"
+}
+```
+
+Due to some compiler bug, in increment runtime souce-map miss lots of information, so use stub runtime is easy to debug.
+
+Now interpreter does not support some instruction, so disable some ASC feature is also needed.
 
 ### import function
 
