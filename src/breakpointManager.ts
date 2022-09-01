@@ -6,6 +6,8 @@ type FilePath = string;
 type Line = number;
 type BreakpointIndex = number;
 
+const INVALID_BREAKPOINT_INDEX = -1;
+
 export class BreakpointManager {
   breakpoints: Map<FilePath, Map<Line, BreakpointIndex>> = new Map();
   constructor(
@@ -14,7 +16,27 @@ export class BreakpointManager {
     private _errorHandler: (reason: string) => void
   ) {}
 
-  async updataBreakpoints(path: FilePath, lines: Line[]): Promise<Map<Line, BreakpointIndex>> {
+  async syncBreakpoints() {
+    for (const [path, lineMap] of this.breakpoints) {
+      for (const [line, bpIndex] of lineMap) {
+        if (bpIndex == INVALID_BREAKPOINT_INDEX) {
+          const codePosition = source2instr({ source: path, line }, this._sourceToInstrMapping);
+          if (codePosition == null) {
+            lineMap.delete(line);
+            continue;
+          }
+          const breakpointIndex = await this.addBreakpoint(codePosition.funcIndex, codePosition.instrIndex);
+          if (breakpointIndex != undefined) {
+            lineMap.set(line, breakpointIndex);
+          } else {
+            lineMap.delete(line);
+          }
+        }
+      }
+    }
+  }
+
+  async updataBreakpoints(path: FilePath, lines: Line[], updateImmediate: boolean): Promise<Map<Line, BreakpointIndex>> {
     const oldLines = this.breakpoints.get(path);
     const newLines = new Map<Line, BreakpointIndex>();
     if (oldLines == undefined) {
@@ -23,8 +45,10 @@ export class BreakpointManager {
         if (codePosition == null) {
           continue;
         }
-        const breakpointIndex = await this.addBreakpoint(codePosition.funcIndex, codePosition.instrIndex);
-        if (breakpointIndex) {
+        const breakpointIndex = updateImmediate
+          ? await this.addBreakpoint(codePosition.funcIndex, codePosition.instrIndex)
+          : INVALID_BREAKPOINT_INDEX;
+        if (breakpointIndex != undefined) {
           newLines.set(line, breakpointIndex);
         }
       }
@@ -45,7 +69,9 @@ export class BreakpointManager {
         if (codePosition == null) {
           continue;
         }
-        const breakpointIndex = await this.addBreakpoint(codePosition.funcIndex, codePosition.instrIndex);
+        const breakpointIndex = updateImmediate
+          ? await this.addBreakpoint(codePosition.funcIndex, codePosition.instrIndex)
+          : INVALID_BREAKPOINT_INDEX;
         if (breakpointIndex != undefined) {
           newLines.set(line, breakpointIndex);
         }
