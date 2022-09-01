@@ -1,3 +1,4 @@
+import { logInfo } from "./channel";
 import { BREAKPOINT_DEBUG } from "./constant";
 import { WasmDebuggerClient } from "./proto/interface_grpc_pb";
 import * as proto from "./proto/interface_pb";
@@ -56,7 +57,7 @@ export class BreakpointManager {
                 if (updateImmediate) {
                   await this.removeBreakpoint(breakpointIndex);
                 } else {
-                  if (BREAKPOINT_DEBUG) console.log(`cache remove bp ${breakpointIndex}`);
+                  if (BREAKPOINT_DEBUG) logInfo(`cache remove bp ${breakpointIndex}`);
                   breakpointIndexs[index] = async () => {
                     this.removeBreakpoint(breakpointIndex);
                     return undefined;
@@ -88,7 +89,7 @@ export class BreakpointManager {
         }
       } else {
         // store the notify call
-        if (BREAKPOINT_DEBUG) console.log(`cache set bp ${JSON.stringify(codePositions)}`);
+        if (BREAKPOINT_DEBUG) logInfo(`cache set bp ${JSON.stringify(codePositions)}`);
         newLines.set(
           line,
           codePositions.map((codePosition) => () => this.addBreakpoint(codePosition.funcIndex, codePosition.instrIndex))
@@ -116,7 +117,7 @@ export class BreakpointManager {
       return;
     }
     const breakpointIndex = reply.getBreakpointIndex();
-    if (BREAKPOINT_DEBUG) console.log(`set bp (${funcIndex},${instrIndex}), index ${breakpointIndex}`);
+    if (BREAKPOINT_DEBUG) logInfo(`set bp (${funcIndex},${instrIndex}), index ${breakpointIndex}`);
     return breakpointIndex;
   }
 
@@ -136,6 +137,6 @@ export class BreakpointManager {
       this._errorHandler(`set breakpoint failed due to "${reply.getErrorReason()}"`);
       return;
     }
-    if (BREAKPOINT_DEBUG) console.log(`remove bp index ${breakpointIndex}`);
+    if (BREAKPOINT_DEBUG) logInfo(`remove bp index ${breakpointIndex}`);
   }
 }

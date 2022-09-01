@@ -24,6 +24,7 @@ import { sleep, value2str } from "./utils";
 import { abort, trace } from "./importFunction";
 import { DebugSessionWrapper } from "./debugSession";
 import { BreakpointManager } from "./breakpointManager";
+import { logInfo } from "./channel";
 
 /**
  * This interface describes the mock-debug specific launch attributes
@@ -110,7 +111,7 @@ export class DebugSession extends LoggingDebugSession {
     args: DebugProtocol.DisconnectArguments,
     request?: DebugProtocol.Request
   ): void {
-    console.log(`disconnectRequest suspend: ${args.suspendDebuggee}, terminate: ${args.terminateDebuggee}`);
+    logInfo(`disconnectRequest suspend: ${args.suspendDebuggee}, terminate: ${args.terminateDebuggee}`);
     this._status = Status.INIT;
   }
 

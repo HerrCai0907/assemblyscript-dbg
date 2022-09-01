@@ -1,9 +1,10 @@
 import { TerminatedEvent } from "@vscode/debugadapter";
-import { ChildProcess, execSync, spawn, spawnSync } from "child_process";
+import { ChildProcess, spawn } from "child_process";
 import * as vscode from "vscode";
 import { DEBUG_TYPE } from "./constant";
 import { DebugSession } from "./debug";
 import getPort from "get-port";
+import { logError, logInfo } from "./channel";
 
 export function activateDebug(context: vscode.ExtensionContext, factory?: vscode.DebugAdapterDescriptorFactory) {
   context.subscriptions.push(
@@ -45,16 +46,35 @@ class InlineDebugAdapterFactory implements vscode.DebugAdapterDescriptorFactory 
     try {
       const dapPort = await getPort();
       const debuggerPort = dapPort;
-      console.log(`starting wasm-grpc at "[::1]:${debuggerPort}" and "http://127.0.0.1:${dapPort}"`);
-      this.server = spawn("wasmdbg-grpc", ["-s", `[::1]:${debuggerPort}`, "-c", `http://127.0.0.1:${dapPort}`], {
-        stdio: "inherit",
+      logInfo(`starting wasm-grpc at "[::1]:${debuggerPort}" and "http://127.0.0.1:${dapPort}"`);
+      const server = spawn("wasmdbg-grpc", ["-s", `[::1]:${debuggerPort}`, "-c", `http://127.0.0.1:${dapPort}`], {
+        stdio: "pipe",
       });
-      this.server.on("close", (code, signal) => {
+      this.server = server;
+      server.on("close", (code, signal) => {
         if (code != 0 && signal !== "SIGKILL") {
           void vscode.window.showErrorMessage(`wasmdbg crash! ${code} ${signal}`);
           this.session?.sendEvent(new TerminatedEvent());
         }
         this.server = null;
+      });
+      let serverOut: string[] = [];
+      server.stdout.on("data", (data: Buffer) => {
+        const msg = data.toString("utf8").split("\n");
+        serverOut.push(...msg);
+        if (msg.length > 1) {
+          logInfo("[wasmdbg-grpc] " + serverOut.join(""));
+          serverOut = [];
+        }
+      });
+      let serverErr: string[] = [];
+      server.stderr.on("data", (data: Buffer) => {
+        const msg = data.toString("utf8").split("\n");
+        serverErr.push(...msg);
+        if (msg.length > 1) {
+          logError("[wasmdbg-grpc] " + serverErr.join(""));
+          serverErr = [];
+        }
       });
       this.session = new DebugSession(debuggerPort, dapPort);
       return new vscode.DebugAdapterInlineImplementation(this.session);
@@ -65,7 +85,7 @@ class InlineDebugAdapterFactory implements vscode.DebugAdapterDescriptorFactory 
   dispose() {
     this.session?.dispose();
     this.session = null;
-    console.log("stop wasm-grpc");
+    logInfo("stop wasm-grpc");
     this.server?.kill("SIGKILL");
     this.server = null;
   }
