@@ -16,13 +16,14 @@ import { WasmDebuggerClient } from "./proto/interface_grpc_pb";
 import * as grpc from "@grpc/grpc-js";
 import * as proto from "./proto/interface_pb";
 import { basename } from "path";
-import { FunctionInstr, SourceMapAnalysis, SourcePosition } from "./sourceMap";
+import { instr2source, SourceMapAnalysis } from "./sourceMap";
 import assert = require("assert");
 import { FixedScopeId, ScopeId } from "./scopeId";
 import { WasmDAPServer } from "./dapServer";
 import { sleep, value2str } from "./utils";
 import { abort, trace } from "./importFunction";
 import { DebugSessionWrapper } from "./debugSession";
+import { BreakpointManager } from "./breakpointManager";
 
 /**
  * This interface describes the mock-debug specific launch attributes
@@ -61,6 +62,7 @@ export class DebugSession extends LoggingDebugSession {
   private _client: WasmDebuggerClient;
   private _server: WasmDAPServer;
   private _sourceMapAnalysis: SourceMapAnalysis | null = null;
+  private _breakpointManager: BreakpointManager | null = null;
   private _status: Status = Status.INIT;
 
   constructor(debuggerPort: number, dapPort: number) {
@@ -210,6 +212,7 @@ export class DebugSession extends LoggingDebugSession {
     request?: DebugProtocol.Request | undefined
   ) {
     await this.runCode(proto.RunCodeType.CONTINUE);
+    this.sendEvent(new StoppedEvent("step", DebugSession.threadID));
     this.sendResponse(response);
   }
   protected async stepInRequest(response: DebugProtocol.StepInResponse, args: DebugProtocol.StepInArguments) {
@@ -249,6 +252,62 @@ export class DebugSession extends LoggingDebugSession {
         this._status = Status.FINISH;
         break;
     }
+  }
+
+  // ██████  ██████  ███████  █████  ██   ██ ██████   ██████  ██ ███    ██ ████████
+  // ██   ██ ██   ██ ██      ██   ██ ██  ██  ██   ██ ██    ██ ██ ████   ██    ██
+  // ██████  ██████  █████   ███████ █████   ██████  ██    ██ ██ ██ ██  ██    ██
+  // ██   ██ ██   ██ ██      ██   ██ ██  ██  ██      ██    ██ ██ ██  ██ ██    ██
+  // ██████  ██   ██ ███████ ██   ██ ██   ██ ██       ██████  ██ ██   ████    ██
+
+  protected async setBreakPointsRequest(
+    response: DebugProtocol.SetBreakpointsResponse,
+    args: DebugProtocol.SetBreakpointsArguments
+  ): Promise<void> {
+    await (async () => {
+      const breakpointManager = await this.checkBreakpointManager();
+      const targetBreakpoint = args.breakpoints;
+      if (targetBreakpoint == undefined) {
+        return;
+      }
+      const path = args.source.path as string;
+      const source = new Source(args.source.name ?? path, path, undefined, args.source.origin, args.source.adapterData);
+      if (this._status != Status.RUNNING) {
+        // not init, disable all breakpoint
+        response.body = {
+          breakpoints: targetBreakpoint.map((bp) => {
+            return new Breakpoint(false, bp.line, undefined, source);
+          }),
+        };
+        return;
+      }
+      if (breakpointManager == null) {
+        return;
+      }
+      const actualBreakpointMap = await breakpointManager.updataBreakpoints(
+        path,
+        targetBreakpoint.map((bp) => bp.line)
+      );
+      response.body = {
+        breakpoints: targetBreakpoint.map((bp) => {
+          const bpIndex = actualBreakpointMap.get(bp.line);
+          return new Breakpoint(bpIndex != undefined, bp.line, undefined, source);
+        }),
+      };
+    })();
+    this.sendResponse(response);
+  }
+
+  private async checkBreakpointManager() {
+    if (this._breakpointManager == null) {
+      assert(this._sourceMapAnalysis);
+      const sourceToInstrMapping = await this._sourceMapAnalysis.sourceToInstrMapping;
+      if (sourceToInstrMapping == null) {
+        return null;
+      }
+      this._breakpointManager = new BreakpointManager(this._client, sourceToInstrMapping, this.errorHandler);
+    }
+    return this._breakpointManager;
   }
 
   // ██      ██ ███████ ████████ ███████ ███    ██
@@ -294,12 +353,15 @@ export class DebugSession extends LoggingDebugSession {
             // if not in top call stack, instr is return addr, so need to reduce 1 for call instr
             instrIndex--;
           }
-          const sourcePosition = DebugSession.instr2source(
-            funcIndex,
-            instrIndex,
-            index == 0,
+          const sourcePosition = instr2source(
+            { funcIndex, instrIndex },
             instrTobinaryMapping,
-            binaryToSourceMapping
+            binaryToSourceMapping,
+            (delta) => {
+              if (index == 0) {
+                void vscode.window.showInformationMessage(`stack trace may be incorrect, miss ${delta} instruction`);
+              }
+            }
           );
           if (sourcePosition) {
             return new StackFrame(
@@ -433,42 +495,6 @@ export class DebugSession extends LoggingDebugSession {
       undefined,
       "assemblyscript-debug-adapter-data"
     );
-  }
-
-  private static instr2source(
-    funcIndex: number,
-    instrIndex: number,
-    displayMiss: boolean,
-    instrTobinaryMapping: FunctionInstr[],
-    binaryToSourceMapping: Map<number, SourcePosition>
-  ): SourcePosition | null {
-    let sourcePosition: SourcePosition | null = null;
-    const orginInstrIndex = instrIndex;
-    for (; instrIndex >= 0; instrIndex--) {
-      if (funcIndex >= instrTobinaryMapping.length) {
-        break;
-      }
-      const functionInstr = instrTobinaryMapping[funcIndex];
-      if (instrIndex >= functionInstr.length) {
-        instrIndex = functionInstr.length;
-        continue;
-      }
-      const binaryOffset = functionInstr[instrIndex];
-      if (binaryOffset) {
-        sourcePosition = binaryToSourceMapping.get(binaryOffset) ?? null;
-        if (sourcePosition) {
-          break;
-        }
-      }
-    }
-    if (sourcePosition) {
-      if (displayMiss && instrIndex != orginInstrIndex) {
-        void vscode.window.showInformationMessage(
-          `stack trace may be incorrect, miss ${orginInstrIndex - instrIndex} instruction`
-        );
-      }
-    }
-    return sourcePosition;
   }
 
   private errorHandler = (reason: string) => {

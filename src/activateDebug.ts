@@ -45,7 +45,7 @@ class InlineDebugAdapterFactory implements vscode.DebugAdapterDescriptorFactory 
     try {
       const dapPort = await getPort();
       const debuggerPort = dapPort;
-      console.log(`starting wasm-grpc at ${debuggerPort} and ${dapPort}`);
+      console.log(`starting wasm-grpc at "[::1]:${debuggerPort}" and "http://127.0.0.1:${dapPort}"`);
       this.server = spawn("wasmdbg-grpc", ["-s", `[::1]:${debuggerPort}`, "-c", `http://127.0.0.1:${dapPort}`], {
         stdio: "inherit",
       });
