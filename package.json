@@ -1,7 +1,7 @@
 {
   "name": "assemblyscript-dbg",
   "displayName": "Assemblyscript-Debugger",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "publisher": "CongcongCai",
   "description": "Assemblyscript Debugger",
   "author": {
